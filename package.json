@@ -1,0 +1,17 @@
+{
+	"name": "egrass-bot",
+	"author": {
+		"name": "Kian Kasad",
+		"email": "kian@kasad.com",
+		"url": "https://kasad.com"
+	},
+	"module": "index.ts",
+	"type": "module",
+	"devDependencies": {
+		"@types/bun": "latest",
+		"prettier": "^3.6.2"
+	},
+	"peerDependencies": {
+		"typescript": "^5.0.0"
+	}
+}
