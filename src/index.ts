@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { commands } from "./commands";
 import { env } from "./env";
+import { db } from "./db";
 
 // Update application commands
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
@@ -26,7 +27,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // When the client is ready, run this code (only once).
 client.once(Events.ClientReady, (readyClient) => {
-	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+	console.log(`Logged in as ${readyClient.user.tag}`);
 
 	readyClient.user.setActivity({
 		name: "you",
@@ -40,6 +41,18 @@ client.on(Events.InteractionCreate, (interaction) => {
 
 	const command = commands.get(interaction.commandName);
 	command?.execute(interaction);
+});
+
+// Graceful exit handlers
+process.on("SIGINT", (signal) => {
+	console.warn("Received SIGINT; exiting...");
+	process.exit();
+});
+process.on("exit", () => {
+	client.destroy();
+	console.debug("Client destroyed");
+	db.close(false);
+	console.debug("Database connection closed");
 });
 
 // Log in to Discord

@@ -15,4 +15,5 @@ FROM docker.io/debian:12-slim
 ENV NODE_ENV=production
 COPY --from=builder /app/bot /usr/local/bin/bot
 VOLUME [ "/var/lib/bot" ]
+WORKDIR /var/lib/bot
 ENTRYPOINT ["/usr/local/bin/bot"]
