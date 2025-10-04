@@ -54,9 +54,14 @@ client.on(Events.InteractionCreate, (interaction) => {
 	command?.execute(interaction);
 });
 
-// Graceful exit handlers
+// For some reason, the program doesn't seem to stop when it gets a signal
+// unless we handle it explicitly.
 process.on("SIGINT", (signal) => {
 	console.warn("Received SIGINT; exiting...");
+	process.exit();
+});
+process.on("SIGTERM", (signal) => {
+	console.warn("Received SIGTERM; exiting...");
 	process.exit();
 });
 process.on("exit", () => {
