@@ -36,9 +36,9 @@ export function setProblemsForDay(
 	const date = getDate(offsetFromToday);
 	const runTransaction = db.transaction((urls: string[], date: number) => {
 		clearProblemsQuery.run(date);
-		for (const url of urls) {
+		for (const rawUrl of urls) {
 			// Strip ?list=neetcode150
-			url.replace(/\?list=[^/]*$/, "");
+			const url = rawUrl.replace(/\?list=[^/]*$/, "");
 			try {
 				setProblemsQuery.run(date, url);
 			} catch (error) {
