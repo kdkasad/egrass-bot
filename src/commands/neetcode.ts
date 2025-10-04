@@ -15,7 +15,7 @@ import {
 } from "discord.js";
 import { z } from "zod/mini";
 import type { CommandHandler } from ".";
-import { ALEX_USER_ID } from "../consts";
+import { Users } from "../consts";
 import { getProblemsForTomorrow, setProblemsForTomorrow } from "../db";
 
 enum Subcommand {
@@ -48,14 +48,13 @@ const data = new SlashCommandBuilder()
 
 async function execute(interaction: ChatInputCommandInteraction) {
 	// Make sure it's Alex
-	// if (interaction.user.id !== ALEX_USER_ID) {
-	// 	await interaction.reply({
-	// 		content: "You are not French enough to use this command.",
-	// 		flags: MessageFlags.Ephemeral,
-	// 	});
-	// 	return;
-	// }
-	console.warn("Authorization disabled");
+	if (interaction.user.id !== Users.Alex) {
+		await interaction.reply({
+			content: "You are not French enough to use this command.",
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
 
 	// Dispatch to the right subcommand handler
 	const parse = z

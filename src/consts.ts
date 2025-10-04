@@ -1,2 +1,8 @@
-export const ALEX_USER_ID = '526907259872083988';
-export const NEETCODE_CHANNEL_ID = '1417344977641672764';
+export enum Users {
+	Alex = "526907259872083988",
+	Kian = "753840846549418024",
+}
+
+export enum Channels {
+	Neetcode = "1417344977641672764",
+}
