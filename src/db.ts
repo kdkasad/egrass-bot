@@ -73,18 +73,22 @@ const listQuery = db.query(
 );
 export function listProblems(includePast: boolean): Map<Date, string[]> {
 	type Row = { date: number; url: string };
-	const map = new Map();
+	// Map using seconds since epoch as the keys, since Date objects don't equal each other
+	const epochMap: Map<number, string[]> = new Map();
 	const minDate = includePast ? 0 : getDate(0);
 	const rows = listQuery.iterate(minDate);
 	for (const rawRow of rows) {
 		const row = rawRow as Row;
-		const date = new Date(row.date * 1000);
-		const entry = map.get(date);
+		const entry = epochMap.get(row.date);
 		if (entry) {
 			entry.push(row.url);
 		} else {
-			map.set(date, [row.url]);
+			epochMap.set(row.date, [row.url]);
 		}
 	}
-	return map;
+	const dateMap: Map<Date, string[]> = new Map();
+	for (const [epoch, urls] of epochMap) {
+		dateMap.set(new Date(epoch * 1000), urls);
+	}
+	return dateMap;
 }
