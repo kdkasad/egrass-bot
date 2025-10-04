@@ -18,6 +18,7 @@ import {
 	clearProblemsForDay,
 	getProblemsForDay,
 	setProblemsForDay,
+	UniquenessError,
 } from "../db";
 import { formatProblemUrls, getDate } from "../utils";
 
@@ -86,7 +87,14 @@ async function execute(interaction: ChatInputCommandInteraction) {
 	if (parse.success) {
 		// Call the appropriate handler
 		const subcommand = parse.data;
-		await handlers[subcommand](interaction);
+		try {
+			await handlers[subcommand](interaction);
+		} catch (error) {
+			console.error(
+				`Error executing /${interaction.commandName} ${subcommand}`,
+				error,
+			);
+		}
 	} else {
 		await interaction.reply({
 			content: "Invalid subcommand. How did you even get here?",
@@ -110,7 +118,14 @@ async function executeSet(interaction: ChatInputCommandInteraction) {
 	const dateString = `${date.getMonth() + 1}/${date.getDate()}`;
 
 	const commitAndGetResponseContent = () => {
-		setProblemsForDay(daysFromToday, problems);
+		try {
+			setProblemsForDay(daysFromToday, problems);
+		} catch (error) {
+			if (error instanceof UniquenessError) {
+				return `Error: Problem <${error.problemUrl}> is already in the list`;
+			}
+			throw error;
+		}
 		return `Problems set for ${dateString}:\n${formatProblemUrls(getProblemsForDay(daysFromToday))}`;
 	};
 

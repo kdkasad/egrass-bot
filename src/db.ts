@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, SQLiteError } from "bun:sqlite";
 import { getDate } from "./utils";
 
 export interface ProblemPair {
@@ -12,9 +12,6 @@ db.run(`CREATE TABLE IF NOT EXISTS problems (
 	date INTEGER NOT NULL,
 	url TEXT UNIQUE NOT NULL
 ) STRICT`);
-db.run(
-	`CREATE UNIQUE INDEX IF NOT EXISTS idx_problems_date_url ON problems(date, url)`,
-);
 console.log("Database initialized");
 
 const getProblemsQuery = db.query(`SELECT url FROM problems WHERE date = ?`);
@@ -30,7 +27,7 @@ export function clearProblemsForDay(offsetFromToday: number) {
 }
 
 const setProblemsQuery = db.query(
-	`INSERT OR IGNORE INTO problems (date, url) VALUES (?, ?)`,
+	`INSERT INTO problems (date, url) VALUES (?, ?)`,
 );
 export function setProblemsForDay(
 	offsetFromToday: number,
@@ -42,8 +39,31 @@ export function setProblemsForDay(
 		for (const url of urls) {
 			// Strip ?list=neetcode150
 			url.replace(/\?list=[^/]*$/, "");
-			setProblemsQuery.run(date, url);
+			try {
+				setProblemsQuery.run(date, url);
+			} catch (error) {
+				if (
+					error instanceof SQLiteError &&
+					error.code === "SQLITE_CONSTRAINT_UNIQUE"
+				) {
+					throw new UniquenessError(
+						`Problem ${url} is already in the list`,
+						url,
+					);
+				}
+				throw error;
+			}
 		}
 	});
 	runTransaction(urls, date);
+}
+
+export class UniquenessError extends Error {
+	problemUrl: string;
+
+	constructor(message: string, problemUrl: string) {
+		super(message);
+		this.name = "UniquenessError";
+		this.problemUrl = problemUrl;
+	}
 }
