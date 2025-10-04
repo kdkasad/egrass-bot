@@ -12,13 +12,17 @@ import { Channels, Users } from "../consts";
 import { extractProblemId, formatProblemUrls } from "../utils";
 
 export function createJob(client: Client<true>) {
-	cron.schedule("0 0 * * *", async () => {
-		try {
-			await execute(client);
-		} catch (error) {
-			console.error("Error running announcement job", error);
-		}
-	});
+	return cron.schedule(
+		"0 0 * * *",
+		async () => {
+			try {
+				await execute(client);
+			} catch (error) {
+				console.error("Error running announcement job", error);
+			}
+		},
+		{ name: "announce" },
+	);
 }
 
 async function execute(client: Client<true>) {

@@ -13,6 +13,7 @@ RUN bun build --compile --sourcemap --outfile bot src/index.ts
 
 FROM docker.io/debian:12-slim
 ENV NODE_ENV=production
+ENV TZ=America/Indianapolis
 COPY --from=builder /app/bot /usr/local/bin/bot
 VOLUME [ "/var/lib/bot" ]
 WORKDIR /var/lib/bot

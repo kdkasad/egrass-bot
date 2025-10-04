@@ -4,13 +4,17 @@ import { channelMention, type Client } from "discord.js";
 import { Channels, Users } from "../consts";
 
 export function createJob(client: Client<true>) {
-	cron.schedule("0 22 * * *", async () => {
-		try {
-			await execute(client);
-		} catch (error) {
-			console.error("Error running warn-alex job", error);
-		}
-	});
+	return cron.schedule(
+		"0 22 * * *",
+		async () => {
+			try {
+				await execute(client);
+			} catch (error) {
+				console.error("Error running warn-alex job", error);
+			}
+		},
+		{ name: "warn-alex" },
+	);
 }
 
 export async function execute(client: Client<true>) {

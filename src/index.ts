@@ -36,7 +36,13 @@ client.once(Events.ClientReady, (readyClient) => {
 	});
 
 	for (const job of jobs) {
-		job.createJob(readyClient);
+		const task = job.createJob(readyClient);
+		const nextRun = task.getNextRun();
+		if (task.name && nextRun) {
+			console.debug(
+				`Job ${task.name} will first run at ${nextRun.toUTCString()}`,
+			);
+		}
 	}
 });
 
