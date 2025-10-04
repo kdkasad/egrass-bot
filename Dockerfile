@@ -9,7 +9,7 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 
 # Build executable
-RUN bun build --compile --minify --sourcemap --outfile bot src/index.ts
+RUN bun build --compile --sourcemap --outfile bot src/index.ts
 
 FROM docker.io/debian:12-slim
 ENV NODE_ENV=production
