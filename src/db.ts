@@ -25,6 +25,10 @@ export function getProblemsForDay(offsetFromToday: number): string[] {
 }
 
 const clearProblemsQuery = db.query(`DELETE FROM problems WHERE date = ?`);
+export function clearProblemsForDay(offsetFromToday: number) {
+	clearProblemsQuery.run(getDate(offsetFromToday));
+}
+
 const setProblemsQuery = db.query(
 	`INSERT OR IGNORE INTO problems (date, url) VALUES (?, ?)`,
 );
