@@ -22,17 +22,20 @@ import {
 	UniquenessError,
 } from "../db";
 import { formatProblemUrls, getDate } from "../utils";
+import { execute as triggerAnnounceJob } from "../jobs/announce";
 
 enum Subcommand {
 	Set = "set",
 	Clear = "clear",
 	List = "list",
+	Announce = "announce",
 }
 
 const handlers: { [key in Subcommand]: CommandHandler } = {
 	[Subcommand.Set]: executeSet,
 	[Subcommand.Clear]: executeClear,
 	[Subcommand.List]: executeList,
+	[Subcommand.Announce]: executeAnnounce,
 };
 
 const MAX_PROBLEMS = 5;
@@ -82,11 +85,19 @@ const data = new SlashCommandBuilder()
 					.setDescription("Include days in the past. Default: false")
 					.setRequired(false),
 			),
+	)
+	.addSubcommand((sub) =>
+		sub
+			.setName(Subcommand.Announce)
+			.setDescription(
+				"Manually trigger announcement of today's problems",
+			),
 	);
 
 async function execute(interaction: ChatInputCommandInteraction) {
-	// Make sure it's Alex
-	if (interaction.user.id !== Users.Alex) {
+	// Make sure it's Alex or Kian
+	const allowedUsers = [Users.Alex, Users.Kian] as string[];
+	if (!allowedUsers.includes(interaction.user.id)) {
 		await interaction.reply({
 			content: "You are not French enough to use this command.",
 			flags: MessageFlags.Ephemeral,
@@ -119,7 +130,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
 
 async function executeSet(interaction: ChatInputCommandInteraction) {
 	// Get problem list from command options
-	const problems = [];
+	const problems: string[] = [];
 	for (let i = 1; i <= MAX_PROBLEMS; i++) {
 		const url = interaction.options.getString(`url-${i}`, i == 1);
 		if (!url) continue;
@@ -300,6 +311,24 @@ async function executeList(interaction: ChatInputCommandInteraction) {
 			flags: MessageFlags.Ephemeral,
 		});
 	}
+}
+
+async function executeAnnounce(interaction: ChatInputCommandInteraction) {
+	// Tell Discord we're processing the command and will respond shortly
+	await interaction.deferReply({
+		flags: MessageFlags.Ephemeral,
+	});
+	let responseMsg = "Announcement sent.";
+	try {
+		await triggerAnnounceJob(interaction.client);
+	} catch (error) {
+		responseMsg = `Error sending announcement: ${(error as Error).message}.`;
+	}
+	// Finalize response
+	await interaction.reply({
+		content: responseMsg,
+		flags: MessageFlags.Ephemeral,
+	});
 }
 
 export { data, execute };

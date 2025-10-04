@@ -25,7 +25,7 @@ export function createJob(client: Client<true>) {
 	);
 }
 
-async function execute(client: Client<true>) {
+export async function execute(client: Client<true>) {
 	const problems = getProblemsForDay(0);
 
 	// Ensure there are problems for today
