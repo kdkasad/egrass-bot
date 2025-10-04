@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { getProblemsForTomorrow } from "../db";
+import { getProblemsForDay } from "../db";
 import { channelMention, type Client } from "discord.js";
 import { Channels, Users } from "../consts";
 
@@ -18,7 +18,7 @@ export function createJob(client: Client<true>) {
 }
 
 export async function execute(client: Client<true>) {
-	const problems = getProblemsForTomorrow();
+	const problems = getProblemsForDay(1);
 
 	if (problems.length > 0) return;
 

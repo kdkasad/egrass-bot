@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { getProblemsForToday } from "../db";
+import { getProblemsForDay } from "../db";
 import {
 	ChannelType,
 	MessageFlags,
@@ -26,7 +26,7 @@ export function createJob(client: Client<true>) {
 }
 
 async function execute(client: Client<true>) {
-	const problems = getProblemsForToday();
+	const problems = getProblemsForDay(0);
 
 	// Ensure there are problems for today
 	if (problems.length === 0) {

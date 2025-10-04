@@ -16,8 +16,8 @@ import {
 import { z } from "zod/mini";
 import type { CommandHandler } from ".";
 import { Users } from "../consts";
-import { getProblemsForTomorrow, setProblemsForTomorrow } from "../db";
-import { formatProblemUrls } from "../utils";
+import { getProblemsForDay, setProblemsForDay } from "../db";
+import { formatProblemUrls, getDate } from "../utils";
 
 enum Subcommand {
 	Set = "set",
@@ -35,7 +35,7 @@ const data = new SlashCommandBuilder()
 	.addSubcommand((sub) => {
 		sub = sub
 			.setName(Subcommand.Set)
-			.setDescription("Set tomorrow's problems");
+			.setDescription("Set a tomorrow's problems");
 		for (let i = 1; i <= MAX_PROBLEMS; i++) {
 			sub = sub.addStringOption((option) =>
 				option
@@ -44,7 +44,13 @@ const data = new SlashCommandBuilder()
 					.setRequired(i == 1),
 			);
 		}
-		return sub;
+		return sub.addIntegerOption((option) =>
+			option
+				.setName("days-from-today")
+				.setDescription(
+					"Date to set, as a number of days from today (0 = today, 1 = tomorrow, etc.)",
+				),
+		);
 	});
 
 async function execute(interaction: ChatInputCommandInteraction) {
@@ -81,18 +87,20 @@ async function executeSet(interaction: ChatInputCommandInteraction) {
 		if (!url) continue;
 		problems.push(url);
 	}
+	const daysFromToday =
+		interaction.options.getInteger("days-from-today") ?? 1;
+
+	const date = new Date(getDate(daysFromToday) * 1000);
+	const dateString = `${date.getMonth() + 1}/${date.getDate()}`;
 
 	const commitAndGetResponseContent = () => {
-		setProblemsForTomorrow(problems);
-		return (
-			"Problems set for given date:\n" +
-			formatProblemUrls(getProblemsForTomorrow())
-		);
+		setProblemsForDay(daysFromToday, problems);
+		return `Problems set for ${dateString}:\n${formatProblemUrls(getProblemsForDay(daysFromToday))}`;
 	};
 
 	try {
 		// If problems are already set, confirm before overwriting
-		const currentProblems = getProblemsForTomorrow();
+		const currentProblems = getProblemsForDay(daysFromToday);
 		if (currentProblems.length > 0) {
 			// Send a response with a confirm and a cancel button
 			const buttonRow =
@@ -107,7 +115,7 @@ async function executeSet(interaction: ChatInputCommandInteraction) {
 						.setStyle(ButtonStyle.Danger),
 				);
 			const response = await interaction.reply({
-				content: `The following problems are already set for the given date:
+				content: `The following problems are already set for ${dateString}:
 ${formatProblemUrls(currentProblems)}
 Are you sure you want to overwrite them?`,
 				flags: MessageFlags.Ephemeral,
@@ -162,7 +170,7 @@ Are you sure you want to overwrite them?`,
 			content: "Failed to set problems.",
 			flags: MessageFlags.Ephemeral,
 		});
-		console.error("Error setting problems", error);
+		console.error(`Error setting problems for ${dateString}`, error);
 	}
 }
 

@@ -15,3 +15,12 @@ export function extractProblemId(url: string): string {
 		"$2",
 	);
 }
+
+// Returns time 00:00 on the date given by today plus the offset in days.
+// E.g. getDate(1) is 00:00 tomorrow, and getDate(-1) is yesterday.
+export function getDate(daysFromToday: number) {
+	const DAY_IN_MS = 24 * 60 * 60 * 1000;
+	let date = new Date(Date.now() + daysFromToday * DAY_IN_MS);
+	date.setHours(0, 0, 0, 0);
+	return date.getTime() / 1000; // won't be fractional because we set ms to 0
+}
