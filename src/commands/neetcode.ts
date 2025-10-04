@@ -17,6 +17,7 @@ import { Users } from "../consts";
 import {
 	clearProblemsForDay,
 	getProblemsForDay,
+	listProblems,
 	setProblemsForDay,
 	UniquenessError,
 } from "../db";
@@ -25,11 +26,13 @@ import { formatProblemUrls, getDate } from "../utils";
 enum Subcommand {
 	Set = "set",
 	Clear = "clear",
+	List = "list",
 }
 
 const handlers: { [key in Subcommand]: CommandHandler } = {
 	[Subcommand.Set]: executeSet,
 	[Subcommand.Clear]: executeClear,
+	[Subcommand.List]: executeList,
 };
 
 const MAX_PROBLEMS = 5;
@@ -68,6 +71,17 @@ const data = new SlashCommandBuilder()
 			.setName(Subcommand.Clear)
 			.setDescription("Clear the problems for the given day")
 			.addIntegerOption(daysFromTodayOptionFunc),
+	)
+	.addSubcommand((sub) =>
+		sub
+			.setName(Subcommand.List)
+			.setDescription("List each day's problems")
+			.addBooleanOption((option) =>
+				option
+					.setName("include-past")
+					.setDescription("Include days in the past. Default: false")
+					.setRequired(false),
+			),
 	);
 
 async function execute(interaction: ChatInputCommandInteraction) {
@@ -258,6 +272,31 @@ Continue?`,
 		// No problems to clear
 		await interaction.reply({
 			content: `No problems to clear for ${dateString}`,
+			flags: MessageFlags.Ephemeral,
+		});
+	}
+}
+
+async function executeList(interaction: ChatInputCommandInteraction) {
+	const includePast = interaction.options.getBoolean("include-past") ?? false;
+	const days = listProblems(includePast);
+	if (days.size === 0) {
+		await interaction.reply({
+			content: "No problems found.",
+			flags: MessageFlags.Ephemeral,
+		});
+	} else {
+		let message = "";
+		for (const [day, problems] of days) {
+			const weekday = day.toLocaleDateString("en-US", {
+				weekday: "long",
+			});
+			message += `### ${weekday}, ${day.getMonth() + 1}/${day.getDate()}\n`;
+			message += formatProblemUrls(problems);
+			message += "\n";
+		}
+		await interaction.reply({
+			content: message.trim(),
 			flags: MessageFlags.Ephemeral,
 		});
 	}

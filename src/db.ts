@@ -67,3 +67,24 @@ export class UniquenessError extends Error {
 		this.problemUrl = problemUrl;
 	}
 }
+
+const listQuery = db.query(
+	`SELECT date, url FROM problems WHERE date >= ? ORDER BY date ASC`,
+);
+export function listProblems(includePast: boolean): Map<Date, string[]> {
+	type Row = { date: number; url: string };
+	const map = new Map();
+	let minDate = includePast ? 0 : getDate(0);
+	const rows = listQuery.iterate(minDate);
+	for (const rawRow of rows) {
+		const row = rawRow as Row;
+		const date = new Date(row.date * 1000);
+		const entry = map.get(date);
+		if (entry) {
+			entry.push(row.url);
+		} else {
+			map.set(date, [row.url]);
+		}
+	}
+	return map;
+}
