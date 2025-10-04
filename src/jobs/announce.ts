@@ -3,11 +3,12 @@ import { getProblemsForToday } from "../db";
 import {
 	ChannelType,
 	MessageFlags,
+	TextChannel,
 	ThreadAutoArchiveDuration,
-	ThreadChannel,
+	userMention,
 	type Client,
 } from "discord.js";
-import { Channels } from "../consts";
+import { Channels, Users } from "../consts";
 import { extractProblemId, formatProblemUrls } from "../utils";
 
 export function createJob(client: Client<true>) {
@@ -26,20 +27,11 @@ async function execute(client: Client<true>) {
 	// Ensure there are problems for today
 	if (problems.length === 0) {
 		console.warn("No problems found for today");
-		// TODO: DM Alex and/or Kian
+		await warnAlexAndKian(client);
 		return;
 	}
 
-	// Get #neetcode channel object
-	const channel = await client.channels.fetch(Channels.Neetcode);
-	if (!channel) {
-		console.error("#neetcode channel not found");
-		return;
-	}
-	if (channel.type !== ChannelType.GuildText) {
-		console.error("#neetcode channel is not a regular text channel");
-		return;
-	}
+	const channel = await getNeetcodeChannel(client);
 
 	// Post & pin message
 	const today = new Date();
@@ -61,4 +53,24 @@ ${formatProblemUrls(problems)}`,
 			reason: `Spoiler thread for ${id}`,
 		});
 	}
+}
+
+async function getNeetcodeChannel(client: Client<true>): Promise<TextChannel> {
+	// Get #neetcode channel object
+	const channel = await client.channels.fetch(Channels.Neetcode);
+	if (!channel) {
+		throw new Error("#neetcode channel not found");
+	}
+	if (channel.type !== ChannelType.GuildText) {
+		throw new Error("#neetcode channel is not a regular text channel");
+	}
+	return channel;
+}
+
+async function warnAlexAndKian(client: Client<true>) {
+	const channel = await getNeetcodeChannel(client);
+	await channel.send({
+		content: `⚠️ Warning: No problems were found for today.
+CC ${userMention(Users.Alex)} ${userMention(Users.Kian)}`,
+	});
 }
