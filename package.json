@@ -7,9 +7,18 @@
 	},
 	"module": "src/index.ts",
 	"type": "module",
+	"scripts": {
+		"dev": "bun run -b src/index.ts",
+		"watch": "bun run -b --watch src/index.ts",
+		"lint": "bun run -b eslint"
+	},
 	"devDependencies": {
+		"@eslint/js": "^9.37.0",
 		"@types/bun": "latest",
-		"prettier": "^3.6.2"
+		"eslint": "^9.37.0",
+		"globals": "^16.4.0",
+		"prettier": "^3.6.2",
+		"typescript-eslint": "^8.45.0"
 	},
 	"peerDependencies": {
 		"typescript": "^5.0.0"
