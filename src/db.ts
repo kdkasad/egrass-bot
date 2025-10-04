@@ -7,7 +7,7 @@ export interface ProblemPair {
 }
 
 export const db = new Database("data.sqlite3", { strict: true, create: true });
-db.run("PRAGMA journal_mode = WAL;");
+// db.run("PRAGMA journal_mode = WAL;");
 db.run(`CREATE TABLE IF NOT EXISTS problems (
 	date INTEGER NOT NULL,
 	url TEXT UNIQUE NOT NULL
