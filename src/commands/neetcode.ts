@@ -119,7 +119,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
 
 async function executeSet(interaction: ChatInputCommandInteraction) {
 	// Get problem list from command options
-	let problems = [];
+	const problems = [];
 	for (let i = 1; i <= MAX_PROBLEMS; i++) {
 		const url = interaction.options.getString(`url-${i}`, i == 1);
 		if (!url) continue;

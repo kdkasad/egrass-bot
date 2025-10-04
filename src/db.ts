@@ -34,7 +34,7 @@ export function setProblemsForDay(
 	urls: string[],
 ): void {
 	const date = getDate(offsetFromToday);
-	let runTransaction = db.transaction((urls: string[], date: number) => {
+	const runTransaction = db.transaction((urls: string[], date: number) => {
 		clearProblemsQuery.run(date);
 		for (const url of urls) {
 			// Strip ?list=neetcode150
@@ -74,7 +74,7 @@ const listQuery = db.query(
 export function listProblems(includePast: boolean): Map<Date, string[]> {
 	type Row = { date: number; url: string };
 	const map = new Map();
-	let minDate = includePast ? 0 : getDate(0);
+	const minDate = includePast ? 0 : getDate(0);
 	const rows = listQuery.iterate(minDate);
 	for (const rawRow of rows) {
 		const row = rawRow as Row;

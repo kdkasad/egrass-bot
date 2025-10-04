@@ -2,7 +2,6 @@ import {
 	ActivityType,
 	Client,
 	Events,
-	GatewayIntentBits,
 	REST,
 	Routes,
 } from "discord.js";
@@ -56,14 +55,12 @@ client.on(Events.InteractionCreate, (interaction) => {
 
 // For some reason, the program doesn't seem to stop when it gets a signal
 // unless we handle it explicitly.
-process.on("SIGINT", (signal) => {
-	console.warn("Received SIGINT; exiting...");
+const signalHandler: NodeJS.SignalsListener = (signal) => {
+	console.warn(`Received ${signal}; exiting...`);
 	process.exit();
-});
-process.on("SIGTERM", (signal) => {
-	console.warn("Received SIGTERM; exiting...");
-	process.exit();
-});
+};
+process.on("SIGINT", signalHandler);
+process.on("SIGTERM", signalHandler);
 process.on("exit", () => {
 	client.destroy();
 	console.debug("Client destroyed");
