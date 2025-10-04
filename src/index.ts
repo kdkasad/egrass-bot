@@ -9,6 +9,7 @@ import {
 import { commands } from "./commands";
 import { env } from "./env";
 import { db } from "./db";
+import { jobs } from "./jobs";
 
 // Update application commands
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
@@ -33,6 +34,10 @@ client.once(Events.ClientReady, (readyClient) => {
 		name: "you",
 		type: ActivityType.Watching,
 	});
+
+	for (const job of jobs) {
+		job.createJob(readyClient);
+	}
 });
 
 // Command interaction handler

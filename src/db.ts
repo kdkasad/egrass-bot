@@ -16,17 +16,25 @@ db.run(
 );
 console.log("Database initialized");
 
-// Returns tomorrow's date at time 00:00:00, converted to UTC seconds since epoch
-function tomorrow() {
-	const DAY_IN_MS = 86_400_000; // 24 * 60 * 60 * 1000
-	let date = new Date(Date.now() + DAY_IN_MS);
+// Returns today's date at time 00:00:00, converted to UTC seconds since epoch
+function today() {
+	let date = new Date();
 	date.setHours(0, 0, 0, 0);
 	return date.getTime() / 1000; // won't be fractional because we set ms to 0
+}
+
+// Returns tomorrow's date at time 00:00:00, converted to UTC seconds since epoch
+function tomorrow() {
+	return today() + 86_400; // 24 * 60 * 60
 }
 
 const getProblemsQuery = db.query(`SELECT url FROM problems WHERE date = ?`);
 export function getProblemsForTomorrow(): string[] {
 	const rows = getProblemsQuery.all(tomorrow()) as { url: string }[];
+	return rows.map((row) => row.url);
+}
+export function getProblemsForToday(): string[] {
+	const rows = getProblemsQuery.all(today()) as { url: string }[];
 	return rows.map((row) => row.url);
 }
 

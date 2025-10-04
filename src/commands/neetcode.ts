@@ -17,6 +17,7 @@ import { z } from "zod/mini";
 import type { CommandHandler } from ".";
 import { Users } from "../consts";
 import { getProblemsForTomorrow, setProblemsForTomorrow } from "../db";
+import { formatProblemUrls } from "../utils";
 
 enum Subcommand {
 	Set = "set",
@@ -163,16 +164,6 @@ Are you sure you want to overwrite them?`,
 		});
 		console.error("Error setting problems", error);
 	}
-}
-
-// Returns a string containing a Discord-style markdown list of the problems
-function formatProblemUrls(problemUrls: string[]): string {
-	let formattedUrls = "";
-	for (let i = 0; i < problemUrls.length; i++) {
-		if (i > 0) formattedUrls += "\n";
-		formattedUrls += `- <${problemUrls[i]}>`;
-	}
-	return formattedUrls;
 }
 
 export { data, execute };
