@@ -1,15 +1,5 @@
 # egrass-bot
 
-To install dependencies:
+A Discord bot for a server with my friends.
 
-```bash
-bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.1.0. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+This repository is of no use to anyone other than myself and possible my aforementioned friends.
