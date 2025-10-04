@@ -46,7 +46,7 @@ const daysFromTodayOptionFunc = (
 	option
 		.setName("days-from-today")
 		.setDescription(
-			"Date to clear, as a number of days from today (0 = today, 1 = tomorrow, etc.). Default: tomorrow",
+			"Date to modify, as a number of days from today (0 = today, 1 = tomorrow, etc.). Default: tomorrow",
 		)
 		.setRequired(false);
 const data = new SlashCommandBuilder()
