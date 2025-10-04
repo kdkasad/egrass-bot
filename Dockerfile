@@ -1,4 +1,4 @@
-FROM docker.io/oven/bun AS builder
+FROM docker.io/oven/bun:1 AS builder
 WORKDIR /app
 
 # Install dependencies
