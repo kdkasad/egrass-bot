@@ -57,6 +57,8 @@ ${formatProblemUrls(problems)}`,
 			reason: `Spoiler thread for ${id}`,
 		});
 	}
+
+	console.log(`Announcement posted for ${dateString}`);
 }
 
 async function getNeetcodeChannel(client: Client<true>): Promise<TextChannel> {
