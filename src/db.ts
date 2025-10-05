@@ -194,3 +194,52 @@ const lookupAnnouncementQuery = db.query(
 export function isPastAnnouncement(messageId: string): boolean {
 	return !!lookupAnnouncementQuery.get(messageId);
 }
+
+export interface UserStats {
+	/** Total number of days solved */
+	solves: number;
+	/** Number of days for which the user got the first solve */
+	firstSolves: number;
+	/** Longest number of consecutive days for which the user solved the problem within 24 hours */
+	longestStreak: number;
+}
+const getUserSolveCountQuery = db.query<{ count: number }, [string]>(
+	`SELECT COUNT(*) as "count" FROM solves WHERE user_id = ?`,
+);
+const getUserFirstSolveCountQuery = db.query<{ count: number }, [string]>(
+	// Note: this query uses SQLite-specific behavior regarding MIN() and GROUP BY.
+	// See https://sqlite.org/lang_select.html#bare_columns_in_an_aggregate_query
+	`WITH first_solves AS (
+		SELECT user_id, MIN(solve_time) as solve_time
+		FROM solves
+		GROUP BY announcement_id
+	)
+	SELECT COUNT(*) as "count"
+	FROM first_solves
+	WHERE user_id = ?`,
+);
+const getUserLongestStreakQuery = db.query<{ length: number }, [string]>(
+	`WITH valid_solves AS (
+		SELECT announcements.date
+		FROM solves
+		JOIN announcements ON solves.announcement_id = announcements.message_id
+		WHERE solves.user_id = ?
+	),
+	streak_groups AS (
+		SELECT
+			date,
+			(date - (ROW_NUMBER() OVER (ORDER BY date)) * 86400) AS "group"
+		FROM valid_solves
+	),
+	streaks AS (
+		SELECT COUNT(*) as length FROM streak_groups GROUP BY "group"
+	)
+	SELECT MAX(length) as length FROM streaks`,
+);
+export function getStats(user: User | PartialUser): UserStats {
+	return {
+		solves: getUserSolveCountQuery.get(user.id)?.count ?? 0,
+		firstSolves: getUserFirstSolveCountQuery.get(user.id)?.count ?? 0,
+		longestStreak: getUserLongestStreakQuery.get(user.id)?.length ?? 0,
+	};
+}

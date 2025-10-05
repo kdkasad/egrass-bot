@@ -17,6 +17,7 @@ import { Users } from "../consts";
 import {
 	clearProblemsForDay,
 	getProblemsForDay,
+	getStats,
 	listProblems,
 	setProblemsForDay,
 	UniquenessError,
@@ -29,6 +30,7 @@ enum Subcommand {
 	Clear = "clear",
 	List = "list",
 	Announce = "announce",
+	Stats = "stats",
 }
 
 const handlers: { [key in Subcommand]: CommandHandler } = {
@@ -36,6 +38,7 @@ const handlers: { [key in Subcommand]: CommandHandler } = {
 	[Subcommand.Clear]: executeClear,
 	[Subcommand.List]: executeList,
 	[Subcommand.Announce]: executeAnnounce,
+	[Subcommand.Stats]: executeStats,
 };
 
 const MAX_PROBLEMS = 5;
@@ -91,6 +94,17 @@ const data = new SlashCommandBuilder()
 			.setName(Subcommand.Announce)
 			.setDescription(
 				"Manually trigger announcement of today's problems",
+			),
+	)
+	.addSubcommand((sub) =>
+		sub
+			.setName(Subcommand.Stats)
+			.setDescription("Show a user's stats")
+			.addUserOption((option) =>
+				option
+					.setName("user")
+					.setDescription("The user to show stats for")
+					.setRequired(false),
 			),
 	);
 
@@ -328,6 +342,18 @@ async function executeAnnounce(interaction: ChatInputCommandInteraction) {
 	await interaction.reply({
 		content: responseMsg,
 		flags: MessageFlags.Ephemeral,
+	});
+}
+
+async function executeStats(interaction: ChatInputCommandInteraction) {
+	const user = interaction.options.getUser("user") ?? interaction.user;
+	const stats = getStats(user);
+	await interaction.reply({
+		content: `## Stats for ${user}
+- ✅ Solves: ${stats.solves}
+- 🥇 First solves: ${stats.firstSolves}
+- 📆 Longest daily streak: ${stats.longestStreak}`,
+		allowedMentions: { parse: ["users"] },
 	});
 }
 
