@@ -1,5 +1,6 @@
 import { Database, SQLiteError } from "bun:sqlite";
 import { getDate } from "./utils";
+import type { Message, PartialMessage, PartialUser, User } from "discord.js";
 
 export interface ProblemPair {
 	url1: string;
@@ -7,12 +8,48 @@ export interface ProblemPair {
 }
 
 export const db = new Database("data.sqlite3", { strict: true, create: true });
+console.log("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
-db.run(`CREATE TABLE IF NOT EXISTS problems (
-	date INTEGER NOT NULL,
-	url TEXT UNIQUE NOT NULL
+db.run("PRAGMA foreign_keys = ON");
+db.run(`CREATE TABLE IF NOT EXISTS schema_version (
+	version INTEGER PRIMARY KEY NOT NULL
 ) STRICT`);
-console.log("Database initialized");
+const version =
+	(
+		db.prepare("SELECT version FROM schema_version").get() as {
+			version: number;
+		} | null
+	)?.version ?? 0;
+if (version < 1) {
+	db.run(`UPDATE schema_version SET version = 1`);
+	db.run(`CREATE TABLE IF NOT EXISTS problems (
+		date INTEGER NOT NULL,
+		url TEXT UNIQUE NOT NULL
+	) STRICT`);
+	db.run("CREATE INDEX IF NOT EXISTS idx_problems_date ON problems(date)");
+	db.run(`CREATE TABLE IF NOT EXISTS announcements (
+		message_id TEXT PRIMARY KEY NOT NULL,
+		date INTEGER UNIQUE NOT NULL
+	) STRICT`);
+	db.run(
+		"CREATE INDEX IF NOT EXISTS idx_announcements_date ON announcements(date)",
+	);
+	db.run(`CREATE TABLE IF NOT EXISTS solves (
+		user_id TEXT NOT NULL,
+		solve_time INTEGER NOT NULL,
+		announcement_id TEXT NOT NULL,
+		FOREIGN KEY (announcement_id) REFERENCES announcements(message_id)
+	) STRICT`);
+	db.run("CREATE INDEX IF NOT EXISTS idx_solves_user_id ON solves(user_id)");
+	db.run(
+		"CREATE INDEX IF NOT EXISTS idx_solves_announcement_id ON solves(announcement_id)",
+	);
+	db.run(
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_solves_user_id_announcement_id ON solves(user_id, announcement_id)",
+	);
+	console.debug("Applied migration 1");
+}
+console.log("Database initialization complete");
 
 const getProblemsQuery = db.query(`SELECT url FROM problems WHERE date = ?`);
 export function getProblemsForDay(offsetFromToday: number): string[] {
@@ -91,4 +128,69 @@ export function listProblems(includePast: boolean): Map<Date, string[]> {
 		dateMap.set(new Date(epoch * 1000), urls);
 	}
 	return dateMap;
+}
+
+const createAnnouncementQuery = db.query(
+	"INSERT INTO announcements (message_id, date) VALUES (?, ?)",
+);
+export function createAnnouncement(message: Message) {
+	createAnnouncementQuery.run(message.id, getDate(0));
+}
+
+const recordSolveQuery = db.query(
+	"INSERT INTO solves (user_id, announcement_id, solve_time) VALUES (?, ?, ?)",
+);
+const getSolveCountQuery = db.query(
+	`SELECT COUNT(*) AS "count" FROM solves WHERE announcement_id = ?`,
+);
+/** @returns true if the solve being recorded is the first solve for the announcement */
+export function recordSolve(
+	user: User | PartialUser,
+	announcement: Message | PartialMessage,
+): boolean {
+	type Row = { count: number };
+	const now = Math.floor(Date.now() / 1000);
+	const row = db.transaction(() => {
+		recordSolveQuery.run(user.id, announcement.id, now);
+		return getSolveCountQuery.get(announcement.id) as Row;
+	})();
+	return row.count === 1;
+}
+
+const deleteSolveQuery = db.query(
+	"DELETE FROM solves WHERE user_id = ? AND announcement_id = ? RETURNING solve_time",
+);
+const getFirstSolveQuery = db.query(
+	`SELECT user_id, solve_time FROM solves WHERE announcement_id = ? ORDER BY solve_time ASC LIMIT 1`,
+);
+export type FirstSolveUpdate = {
+	/** Whether the first solve has changed */
+	changed: boolean;
+	/** The user ID of the new first solver, or null if there is no first solve now */
+	userId: string | null;
+};
+export function deleteSolve(
+	user: User | PartialUser,
+	announcement: Message | PartialMessage,
+): FirstSolveUpdate {
+	type DeleteRow = { user_id: string; solve_time: number } | null;
+	type GetRow = { user_id: string; solve_time: number } | null;
+	return db.transaction(() => {
+		const del = deleteSolveQuery.get(user.id, announcement.id) as DeleteRow;
+		const get = getFirstSolveQuery.get(announcement.id) as GetRow;
+		return {
+			changed:
+				del === null
+					? false
+					: get === null || del.solve_time < get.solve_time,
+			userId: get?.user_id ?? null,
+		};
+	})();
+}
+
+const lookupAnnouncementQuery = db.query(
+	"SELECT 1 FROM announcements WHERE message_id = ?",
+);
+export function isPastAnnouncement(messageId: string): boolean {
+	return !!lookupAnnouncementQuery.get(messageId);
 }

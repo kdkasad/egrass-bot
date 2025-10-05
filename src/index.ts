@@ -2,6 +2,8 @@ import {
 	ActivityType,
 	Client,
 	Events,
+	GatewayIntentBits,
+	Partials,
 	REST,
 	Routes,
 } from "discord.js";
@@ -9,6 +11,7 @@ import { commands } from "./commands";
 import { env } from "./env";
 import { db } from "./db";
 import { jobs } from "./jobs";
+import * as events from "./events";
 
 // Update application commands
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
@@ -23,7 +26,10 @@ try {
 }
 
 // Create a new client instance
-const client = new Client({ intents: [] });
+const client = new Client({
+	intents: [GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.Guilds],
+	partials: [Partials.Reaction, Partials.Message],
+});
 
 // When the client is ready, run this code (only once).
 client.once(Events.ClientReady, (readyClient) => {
@@ -43,6 +49,8 @@ client.once(Events.ClientReady, (readyClient) => {
 			);
 		}
 	}
+
+	events.register(readyClient);
 });
 
 // Command interaction handler

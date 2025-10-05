@@ -42,7 +42,7 @@ export async function execute(client: Client<true>) {
 	const dateString = `${today.getMonth() + 1}/${today.getDate()}`;
 	const message = await channel.send({
 		content: `# ${dateString}
-## Today's NeetCode problems are:
+## 📆 Today's NeetCode problems are:
 ${formatProblemUrls(problems)}`,
 		flags: MessageFlags.SuppressEmbeds,
 	});
@@ -52,13 +52,13 @@ ${formatProblemUrls(problems)}`,
 	for (const problem of problems) {
 		const id = extractProblemId(problem);
 		await channel.threads.create({
-			name: `${dateString}: ${id}`,
+			name: `${dateString}: ${id} 🧵`,
 			autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
 			reason: `Spoiler thread for ${id}`,
 		});
 	}
 
-	console.log(`Announcement posted for ${dateString}`);
+	console.log(`Announcement & threads posted for ${dateString}`);
 }
 
 async function getNeetcodeChannel(client: Client<true>): Promise<TextChannel> {
