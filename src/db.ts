@@ -21,7 +21,7 @@ const version =
 		} | null
 	)?.version ?? 0;
 if (version < 1) {
-	db.run(`UPDATE schema_version SET version = 1`);
+	db.run(`INSERT INTO schema_version (version) VALUES (1)`);
 	db.run(`CREATE TABLE IF NOT EXISTS problems (
 		date INTEGER NOT NULL,
 		url TEXT UNIQUE NOT NULL
