@@ -109,23 +109,27 @@ const data = new SlashCommandBuilder()
 	);
 
 async function execute(interaction: ChatInputCommandInteraction) {
-	// Make sure it's Alex or Kian
-	const allowedUsers = [Users.Alex, Users.Kian] as string[];
-	if (!allowedUsers.includes(interaction.user.id)) {
-		await interaction.reply({
-			content: "You are not French enough to use this command.",
-			flags: MessageFlags.Ephemeral,
-		});
-		return;
-	}
-
 	// Dispatch to the right subcommand handler
 	const parse = z
 		.enum(Subcommand)
 		.safeParse(interaction.options.getSubcommand());
 	if (parse.success) {
-		// Call the appropriate handler
 		const subcommand = parse.data;
+
+		// Check authorization
+		const allowedUsers = [Users.Alex, Users.Kian] as string[];
+		if (
+			![Subcommand.Stats].includes(subcommand) &&
+			!allowedUsers.includes(interaction.user.id)
+		) {
+			await interaction.reply({
+				content: "You are not French enough to use this command.",
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
+
+		// Call the appropriate handler
 		try {
 			await handlers[subcommand](interaction);
 		} catch (error) {
