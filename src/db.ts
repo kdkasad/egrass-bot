@@ -21,7 +21,6 @@ const version =
 		} | null
 	)?.version ?? 0;
 if (version < 1) {
-	db.run(`INSERT INTO schema_version (version) VALUES (1)`);
 	db.run(`CREATE TABLE IF NOT EXISTS problems (
 		date INTEGER NOT NULL,
 		url TEXT UNIQUE NOT NULL
@@ -47,7 +46,23 @@ if (version < 1) {
 	db.run(
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_solves_user_id_announcement_id ON solves(user_id, announcement_id)",
 	);
+	db.run(`INSERT INTO schema_version (version) VALUES (1)`);
 	console.debug("Applied migration 1");
+}
+if (version < 2) {
+	// Remove NOT NULL constraint from solves.solve_time
+	db.run(`ALTER TABLE solves RENAME to solves_old`);
+	db.run(`CREATE TABLE solves (
+		user_id TEXT NOT NULL,
+		solve_time INTEGER,
+		announcement_id TEXT NOT NULL,
+		FOREIGN KEY (announcement_id) REFERENCES announcements(message_id)
+	) STRICT`);
+	db.run(`INSERT INTO solves (user_id, solve_time, announcement_id)
+		SELECT user_id, solve_time, announcement_id FROM solves_old`);
+	db.run(`DROP TABLE solves_old`);
+	db.run(`UPDATE schema_version SET version = 2`);
+	console.debug("Applied migration 2");
 }
 console.log("Database initialization complete");
 
