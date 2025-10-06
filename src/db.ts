@@ -227,6 +227,7 @@ const getUserFirstSolveCountQuery = db.query<{ count: number }, [string]>(
 	`WITH first_solves AS (
 		SELECT user_id, MIN(solve_time) as solve_time
 		FROM solves
+		WHERE solve_time IS NOT NULL
 		GROUP BY announcement_id
 	)
 	SELECT COUNT(*) as "count"
@@ -238,7 +239,12 @@ const getUserLongestStreakQuery = db.query<{ length: number }, [string]>(
 		SELECT announcements.date
 		FROM solves
 		JOIN announcements ON solves.announcement_id = announcements.message_id
-		WHERE solves.user_id = ?
+		WHERE
+			solves.user_id = ?
+			AND (
+				solves.solve_time is NULL
+				OR solves.solve_time - announcements.date < 86400
+			)
 	),
 	streak_groups AS (
 		SELECT
