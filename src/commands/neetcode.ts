@@ -3,6 +3,7 @@ import {
 	ButtonBuilder,
 	ButtonInteraction,
 	ButtonStyle,
+	channelMention,
 	ChatInputCommandInteraction,
 	DiscordjsError,
 	DiscordjsErrorCodes,
@@ -13,7 +14,7 @@ import {
 } from "discord.js";
 import { z } from "zod/mini";
 import type { CommandHandler } from ".";
-import { Users } from "../consts";
+import { Channels, Users } from "../consts";
 import {
 	clearProblemsForDay,
 	getProblemsForDay,
@@ -117,6 +118,18 @@ const data = new SlashCommandBuilder()
 	);
 
 async function execute(interaction: ChatInputCommandInteraction) {
+	// Ensure we're in #neetcode or a DM
+	if (
+		interaction.channelId != Channels.Neetcode &&
+		!interaction.channel?.isDMBased()
+	) {
+		await interaction.reply({
+			content: `This command can only be used in ${channelMention(Channels.Neetcode)} or a DM.`,
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
 	// Dispatch to the right subcommand handler
 	const parse = z
 		.enum(Subcommand)
