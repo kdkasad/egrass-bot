@@ -105,6 +105,14 @@ const data = new SlashCommandBuilder()
 					.setName("user")
 					.setDescription("The user to show stats for")
 					.setRequired(false),
+			)
+			.addBooleanOption((option) =>
+				option
+					.setName("private")
+					.setDescription(
+						"If true, only you can see the response. Default: false",
+					)
+					.setRequired(false),
 			),
 	);
 
@@ -351,6 +359,7 @@ async function executeAnnounce(interaction: ChatInputCommandInteraction) {
 
 async function executeStats(interaction: ChatInputCommandInteraction) {
 	const user = interaction.options.getUser("user") ?? interaction.user;
+	const isPrivate = interaction.options.getBoolean("private") ?? false;
 	const stats = getStats(user);
 	await interaction.reply({
 		content: `## Stats for ${user}
@@ -358,6 +367,7 @@ async function executeStats(interaction: ChatInputCommandInteraction) {
 - 🥇 First solves: ${stats.firstSolves}
 - 📆 Longest daily streak: ${stats.longestStreak}`,
 		allowedMentions: { parse: ["users"] },
+		flags: isPrivate ? MessageFlags.Ephemeral : undefined,
 	});
 }
 
