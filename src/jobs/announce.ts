@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { getProblemsForDay } from "../db";
+import { createAnnouncement, getProblemsForDay } from "../db";
 import {
 	ChannelType,
 	MessageFlags,
@@ -57,6 +57,9 @@ ${formatProblemUrls(problems)}`,
 			reason: `Spoiler thread for ${id}`,
 		});
 	}
+
+	// Add to database
+	createAnnouncement(message);
 
 	console.log(`Announcement & threads posted for ${dateString}`);
 }
