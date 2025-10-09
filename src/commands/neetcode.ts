@@ -380,7 +380,9 @@ async function executeStats(interaction: ChatInputCommandInteraction) {
 - 🥇 First solves: ${stats.firstSolves}
 - 📆 Longest daily streak: ${stats.longestStreak}`,
 		allowedMentions: { parse: ["users"] },
-		flags: isPrivate ? MessageFlags.Ephemeral : undefined,
+		flags:
+			MessageFlags.SuppressNotifications |
+			(isPrivate ? MessageFlags.Ephemeral : 0),
 	});
 }
 
