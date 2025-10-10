@@ -41,8 +41,8 @@ export async function execute(client: Client<true>) {
 	const today = new Date();
 	const dateString = `${today.getMonth() + 1}/${today.getDate()}`;
 	const message = await channel.send({
-		content: `# ${dateString}
-## 📆 Today's NeetCode problems are:
+		content: `# 📆 ${dateString}
+## Today's NeetCode problems are:
 ${formatProblemUrls(problems)}`,
 		flags: MessageFlags.SuppressEmbeds,
 	});
