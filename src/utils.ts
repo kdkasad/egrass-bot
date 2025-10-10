@@ -11,7 +11,7 @@ export function formatProblemUrls(problemUrls: string[]): string {
 // Extracts the problem ID from the URL
 export function extractProblemId(url: string): string {
 	return url.replace(
-		/^(https?:\/\/)?neetcode.io\/problems\/([^/?]+)\/?(\?list=.*)?$/,
+		/^(https?:\/\/)?(neetcode\.io|leetcode.com)\/problems\/([^/?]+)\/?(\?list=.*)?$/,
 		"$2",
 	);
 }
