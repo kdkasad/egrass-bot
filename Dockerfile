@@ -9,7 +9,7 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 
 # Build executable
-RUN bun build --compile --minify --sourcemap --bytecode --outfile bot src/index.ts
+RUN bun build --compile --sourcemap --outfile bot src/index.ts
 
 FROM docker.io/alpine:3.22
 # For some reason, Bun single-file executables targeting musl need libstdc++
