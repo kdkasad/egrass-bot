@@ -1,4 +1,4 @@
-FROM docker.io/oven/bun:1 AS builder
+FROM docker.io/oven/bun:1.3-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
@@ -9,9 +9,11 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 
 # Build executable
-RUN bun build --compile --sourcemap --outfile bot src/index.ts
+RUN bun build --compile --minify --sourcemap --bytecode --outfile bot src/index.ts
 
-FROM docker.io/debian:12-slim
+FROM docker.io/alpine:3.22
+# For some reason, Bun single-file executables targeting musl need libstdc++
+RUN apk --no-cache add libstdc++
 ENV NODE_ENV=production
 ENV TZ=America/Indianapolis
 COPY --from=builder /app/bot /usr/local/bin/bot
