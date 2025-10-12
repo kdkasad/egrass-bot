@@ -7,6 +7,26 @@ export interface ProblemPair {
 	url2: string;
 }
 
+export interface ProblemsRow {
+	date: number;
+	url: string;
+}
+
+export interface SolvesRow {
+	user_id: string;
+	solve_time: number;
+	announcement_id: string;
+}
+
+export interface AnnouncementsRow {
+	message_id: string;
+	date: number;
+}
+
+interface SchemaVersionRow {
+	version: number;
+}
+
 export const db = new Database("data.sqlite3", { strict: true, create: true });
 console.log("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
@@ -15,11 +35,8 @@ db.run(`CREATE TABLE IF NOT EXISTS schema_version (
 	version INTEGER PRIMARY KEY NOT NULL
 ) STRICT`);
 const version =
-	(
-		db.prepare("SELECT version FROM schema_version").get() as {
-			version: number;
-		} | null
-	)?.version ?? 0;
+	db.prepare<SchemaVersionRow, []>("SELECT version FROM schema_version").get()
+		?.version ?? 0;
 if (version < 1) {
 	db.run(`CREATE TABLE IF NOT EXISTS problems (
 		date INTEGER NOT NULL,
@@ -66,21 +83,26 @@ if (version < 2) {
 }
 console.log("Database initialization complete");
 
-const getProblemsQuery = db.query(`SELECT url FROM problems WHERE date = ?`);
+const getProblemsQuery = db.query<
+	Pick<ProblemsRow, "url">,
+	[ProblemsRow["date"]]
+>(`SELECT url FROM problems WHERE date = ?`);
 export function getProblemsForDay(offsetFromToday: number): string[] {
-	type Row = { url: string };
-	const rows = getProblemsQuery.all(getDate(offsetFromToday)) as Row[];
+	const rows = getProblemsQuery.all(getDate(offsetFromToday));
 	return rows.map((row) => row.url);
 }
 
-const clearProblemsQuery = db.query(`DELETE FROM problems WHERE date = ?`);
+const clearProblemsQuery = db.query<null, [ProblemsRow["date"]]>(
+	`DELETE FROM problems WHERE date = ?`,
+);
 export function clearProblemsForDay(offsetFromToday: number) {
 	clearProblemsQuery.run(getDate(offsetFromToday));
 }
 
-const setProblemsQuery = db.query(
-	`INSERT INTO problems (date, url) VALUES (?, ?)`,
-);
+const setProblemsQuery = db.query<
+	null,
+	[ProblemsRow["date"], ProblemsRow["url"]]
+>(`INSERT INTO problems (date, url) VALUES (?, ?)`);
 export function setProblemsForDay(
 	offsetFromToday: number,
 	urls: string[],
@@ -120,17 +142,16 @@ export class UniquenessError extends Error {
 	}
 }
 
-const listQuery = db.query(
-	`SELECT date, url FROM problems WHERE date >= ? ORDER BY date ASC`,
-);
+const listQuery = db.query<
+	Pick<ProblemsRow, "date" | "url">,
+	[ProblemsRow["date"]]
+>(`SELECT date, url FROM problems WHERE date >= ? ORDER BY date ASC`);
 export function listProblems(includePast: boolean): Map<Date, string[]> {
-	type Row = { date: number; url: string };
 	// Map using seconds since epoch as the keys, since Date objects don't equal each other
 	const epochMap: Map<number, string[]> = new Map();
 	const minDate = includePast ? 0 : getDate(0);
 	const rows = listQuery.iterate(minDate);
-	for (const rawRow of rows) {
-		const row = rawRow as Row;
+	for (const row of rows) {
 		const entry = epochMap.get(row.date);
 		if (entry) {
 			entry.push(row.url);
@@ -145,37 +166,49 @@ export function listProblems(includePast: boolean): Map<Date, string[]> {
 	return dateMap;
 }
 
-const createAnnouncementQuery = db.query(
-	"INSERT INTO announcements (message_id, date) VALUES (?, ?)",
-);
+const createAnnouncementQuery = db.query<
+	null,
+	[AnnouncementsRow["message_id"], AnnouncementsRow["date"]]
+>("INSERT INTO announcements (message_id, date) VALUES (?, ?)");
 export function createAnnouncement(message: Message) {
 	createAnnouncementQuery.run(message.id, getDate(0));
 }
 
-const recordSolveQuery = db.query(
-	"INSERT INTO solves (user_id, announcement_id, solve_time) VALUES (?, ?, ?)",
-);
-const getSolveCountQuery = db.query(
-	`SELECT COUNT(*) AS "count" FROM solves WHERE announcement_id = ?`,
-);
+const recordSolveQuery = db.query<
+	null,
+	[
+		SolvesRow["user_id"],
+		SolvesRow["announcement_id"],
+		SolvesRow["solve_time"],
+	]
+>("INSERT INTO solves (user_id, announcement_id, solve_time) VALUES (?, ?, ?)");
+const getSolveCountQuery = db.query<
+	{ count: number },
+	[SolvesRow["announcement_id"]]
+>(`SELECT COUNT(*) AS "count" FROM solves WHERE announcement_id = ?`);
 /** @returns true if the solve being recorded is the first solve for the announcement */
 export function recordSolve(
 	user: User | PartialUser,
 	announcement: Message | PartialMessage,
 ): boolean {
-	type Row = { count: number };
 	const now = Math.floor(Date.now() / 1000);
 	const row = db.transaction(() => {
 		recordSolveQuery.run(user.id, announcement.id, now);
-		return getSolveCountQuery.get(announcement.id) as Row;
+		return getSolveCountQuery.get(announcement.id);
 	})();
-	return row.count === 1;
+	return row?.count === 1;
 }
 
-const deleteSolveQuery = db.query(
+const deleteSolveQuery = db.query<
+	Pick<SolvesRow, "solve_time">,
+	[SolvesRow["user_id"], SolvesRow["announcement_id"]]
+>(
 	"DELETE FROM solves WHERE user_id = ? AND announcement_id = ? RETURNING solve_time",
 );
-const getFirstSolveQuery = db.query(
+const getFirstSolveQuery = db.query<
+	Pick<SolvesRow, "user_id" | "solve_time">,
+	[SolvesRow["announcement_id"]]
+>(
 	`SELECT user_id, solve_time FROM solves WHERE announcement_id = ? ORDER BY solve_time ASC LIMIT 1`,
 );
 export type FirstSolveUpdate = {
@@ -188,11 +221,9 @@ export function deleteSolve(
 	user: User | PartialUser,
 	announcement: Message | PartialMessage,
 ): FirstSolveUpdate {
-	type DeleteRow = { user_id: string; solve_time: number } | null;
-	type GetRow = { user_id: string; solve_time: number } | null;
 	return db.transaction(() => {
-		const del = deleteSolveQuery.get(user.id, announcement.id) as DeleteRow;
-		const get = getFirstSolveQuery.get(announcement.id) as GetRow;
+		const del = deleteSolveQuery.get(user.id, announcement.id);
+		const get = getFirstSolveQuery.get(announcement.id);
 		return {
 			changed:
 				del === null
@@ -203,9 +234,10 @@ export function deleteSolve(
 	})();
 }
 
-const lookupAnnouncementQuery = db.query(
-	"SELECT 1 FROM announcements WHERE message_id = ?",
-);
+const lookupAnnouncementQuery = db.query<
+	{ "1": 1 },
+	[AnnouncementsRow["message_id"]]
+>("SELECT 1 FROM announcements WHERE message_id = ?");
 export function isPastAnnouncement(messageId: string): boolean {
 	return !!lookupAnnouncementQuery.get(messageId);
 }
@@ -218,10 +250,14 @@ export interface UserStats {
 	/** Longest number of consecutive days for which the user solved the problem within 24 hours */
 	longestStreak: number;
 }
-const getUserSolveCountQuery = db.query<{ count: number }, [string]>(
-	`SELECT COUNT(*) as "count" FROM solves WHERE user_id = ?`,
-);
-const getUserFirstSolveCountQuery = db.query<{ count: number }, [string]>(
+const getUserSolveCountQuery = db.query<
+	{ count: number },
+	[SolvesRow["user_id"]]
+>(`SELECT COUNT(*) as "count" FROM solves WHERE user_id = ?`);
+const getUserFirstSolveCountQuery = db.query<
+	{ count: number },
+	[SolvesRow["user_id"]]
+>(
 	// Note: this query uses SQLite-specific behavior regarding MIN() and GROUP BY.
 	// See https://sqlite.org/lang_select.html#bare_columns_in_an_aggregate_query
 	`WITH first_solves AS (
@@ -234,7 +270,10 @@ const getUserFirstSolveCountQuery = db.query<{ count: number }, [string]>(
 	FROM first_solves
 	WHERE user_id = ?`,
 );
-const getUserLongestStreakQuery = db.query<{ length: number }, [string]>(
+const getUserLongestStreakQuery = db.query<
+	{ length: number },
+	[SolvesRow["user_id"]]
+>(
 	`WITH valid_solves AS (
 		SELECT announcements.date
 		FROM solves
