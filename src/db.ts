@@ -78,6 +78,14 @@ if (version < 2) {
 	db.run(`INSERT INTO solves (user_id, solve_time, announcement_id)
 		SELECT user_id, solve_time, announcement_id FROM solves_old`);
 	db.run(`DROP TABLE solves_old`);
+	// Re-create indexes for new table
+	db.run("CREATE INDEX IF NOT EXISTS idx_solves_user_id ON solves(user_id)");
+	db.run(
+		"CREATE INDEX IF NOT EXISTS idx_solves_announcement_id ON solves(announcement_id)",
+	);
+	db.run(
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_solves_user_id_announcement_id ON solves(user_id, announcement_id)",
+	);
 	db.run(`UPDATE schema_version SET version = 2`);
 	console.debug("Applied migration 2");
 }
