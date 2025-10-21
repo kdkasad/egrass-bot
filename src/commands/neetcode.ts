@@ -131,10 +131,16 @@ const data = new SlashCommandBuilder()
 
 async function execute(interaction: ChatInputCommandInteraction) {
 	// Ensure we're in #neetcode or a DM
-	if (
-		interaction.channelId != Channels.Neetcode &&
-		!interaction.channel?.isDMBased()
-	) {
+	const channelIsDMBased = async () => {
+		return (
+			interaction.channel?.isDMBased() ??
+			(
+				await interaction.client.channels.fetch(interaction.channelId)
+			)?.isDMBased() ??
+			false
+		);
+	};
+	if (interaction.channelId != Channels.Neetcode && !channelIsDMBased()) {
 		await interaction.reply({
 			content: `This command can only be used in ${channelMention(Channels.Neetcode)} or a DM.`,
 			flags: MessageFlags.Ephemeral,
