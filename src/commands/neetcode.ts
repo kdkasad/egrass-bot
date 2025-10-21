@@ -8,8 +8,10 @@ import {
 	DiscordjsError,
 	DiscordjsErrorCodes,
 	MessageFlags,
+	messageLink,
 	SlashCommandBuilder,
 	SlashCommandIntegerOption,
+	userMention,
 	type CacheType,
 } from "discord.js";
 import { z } from "zod/mini";
@@ -19,6 +21,7 @@ import {
 	clearProblemsForDay,
 	getProblemsForDay,
 	getStats,
+	getUnsolvedAnnouncements,
 	listProblems,
 	setProblemsForDay,
 	UniquenessError,
@@ -32,6 +35,7 @@ enum Subcommand {
 	List = "list",
 	Announce = "announce",
 	Stats = "stats",
+	FindUnsolved = "find-unsolved",
 }
 
 const handlers: { [key in Subcommand]: CommandHandler } = {
@@ -40,7 +44,10 @@ const handlers: { [key in Subcommand]: CommandHandler } = {
 	[Subcommand.List]: executeList,
 	[Subcommand.Announce]: executeAnnounce,
 	[Subcommand.Stats]: executeStats,
+	[Subcommand.FindUnsolved]: executeFindUnsolved,
 };
+
+const publicSubcommands = [Subcommand.Stats, Subcommand.FindUnsolved];
 
 const MAX_PROBLEMS = 5;
 
@@ -115,6 +122,11 @@ const data = new SlashCommandBuilder()
 					)
 					.setRequired(false),
 			),
+	)
+	.addSubcommand((sub) =>
+		sub
+			.setName(Subcommand.FindUnsolved)
+			.setDescription("Find problems you haven't solved yet"),
 	);
 
 async function execute(interaction: ChatInputCommandInteraction) {
@@ -140,7 +152,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
 		// Check authorization
 		const allowedUsers = [Users.Alex, Users.Kian] as string[];
 		if (
-			![Subcommand.Stats].includes(subcommand) &&
+			!publicSubcommands.includes(subcommand) &&
 			!allowedUsers.includes(interaction.user.id)
 		) {
 			await interaction.reply({
@@ -158,6 +170,12 @@ async function execute(interaction: ChatInputCommandInteraction) {
 				`Error executing /${interaction.commandName} ${subcommand}`,
 				error,
 			);
+			interaction
+				.reply({
+					content: `An error occurred while executing the command. Contact ${userMention(Users.Kian)} for details.`,
+					flags: MessageFlags.Ephemeral,
+				})
+				.catch(() => {});
 		}
 	} else {
 		await interaction.reply({
@@ -382,6 +400,30 @@ async function executeStats(interaction: ChatInputCommandInteraction) {
 		flags:
 			MessageFlags.SuppressNotifications |
 			(isPrivate ? MessageFlags.Ephemeral : 0),
+	});
+}
+
+async function executeFindUnsolved(interaction: ChatInputCommandInteraction) {
+	const user = interaction.user;
+	const unsolvedAnnouncements = getUnsolvedAnnouncements(user);
+	const messageLinks = unsolvedAnnouncements
+		.map((announcement) => {
+			const link = messageLink(
+				Channels.Neetcode,
+				announcement.message_id,
+				interaction.guildId!,
+			);
+			const date = new Date(announcement.date * 1000);
+			return `- ${date.getMonth() + 1}/${date.getDate()}: ${link}`;
+		})
+		.join("\n");
+	let content = `No unsolved problems. Nice work! 🥳`;
+	if (unsolvedAnnouncements.length > 0) {
+		content = `Unsolved days for ${user}:\n${messageLinks}`;
+	}
+	await interaction.reply({
+		content,
+		flags: MessageFlags.Ephemeral,
 	});
 }
 

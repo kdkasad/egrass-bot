@@ -311,3 +311,26 @@ export function getStats(user: User | PartialUser): UserStats {
 		longestStreak: getUserLongestStreakQuery.get(user.id)?.length ?? 0,
 	};
 }
+
+export type UnsolvedAnnouncement = Pick<
+	AnnouncementsRow,
+	"message_id" | "date"
+>;
+
+const getUnsolvedAnnouncementsQuery = db.query<
+	UnsolvedAnnouncement,
+	[User["id"]]
+>(
+	`WITH
+		user_solves AS (SELECT * FROM solves WHERE user_id = ?)
+	SELECT a.message_id, a.date
+	FROM announcements AS a
+	LEFT OUTER JOIN user_solves AS s
+	ON s.announcement_id = a.message_id
+	WHERE s.announcement_id IS NULL`,
+);
+export function getUnsolvedAnnouncements(
+	user: User | PartialUser,
+): UnsolvedAnnouncement[] {
+	return getUnsolvedAnnouncementsQuery.all(user.id);
+}
