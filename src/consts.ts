@@ -6,3 +6,6 @@ export enum Users {
 export enum Channels {
 	Neetcode = "1417344977641672764",
 }
+
+/** Maximum length of a Discord message's content */
+export const MAX_MSG_CONTENT_LENGTH = 2000;

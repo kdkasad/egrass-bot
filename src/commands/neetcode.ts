@@ -16,7 +16,7 @@ import {
 } from "discord.js";
 import { z } from "zod/mini";
 import type { CommandHandler } from ".";
-import { Channels, Users } from "../consts";
+import { Channels, MAX_MSG_CONTENT_LENGTH, Users } from "../consts";
 import {
 	clearProblemsForDay,
 	getProblemsForDay,
@@ -406,25 +406,45 @@ async function executeStats(interaction: ChatInputCommandInteraction) {
 async function executeFindUnsolved(interaction: ChatInputCommandInteraction) {
 	const user = interaction.user;
 	const unsolvedAnnouncements = getUnsolvedAnnouncements(user);
-	const messageLinks = unsolvedAnnouncements
-		.map((announcement) => {
-			const link = messageLink(
-				Channels.Neetcode,
-				announcement.message_id,
-				interaction.guildId!,
-			);
-			const date = new Date(announcement.date * 1000);
-			return `- ${date.getMonth() + 1}/${date.getDate()}: ${link}`;
-		})
-		.join("\n");
-	let content = `No unsolved problems. Nice work! 🥳`;
-	if (unsolvedAnnouncements.length > 0) {
-		content = `Unsolved days for ${user}:\n${messageLinks}`;
+	if (unsolvedAnnouncements.length === 0) {
+		await interaction.reply({
+			content: `No unsolved problems. Nice work! 🥳`,
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
 	}
-	await interaction.reply({
-		content,
-		flags: MessageFlags.Ephemeral,
+
+	const messageLinks = unsolvedAnnouncements.map((announcement) => {
+		const link = messageLink(
+			Channels.Neetcode,
+			announcement.message_id,
+			interaction.guildId!,
+		);
+		const date = new Date(announcement.date * 1000);
+		return `\n- ${date.getMonth() + 1}/${date.getDate()}: ${link}`;
 	});
+	const messages = [`Unsolved days for ${user}:`];
+	for (const link of messageLinks) {
+		const lastMsg = messages[messages.length - 1];
+		if (lastMsg.length + link.length > MAX_MSG_CONTENT_LENGTH) {
+			// Start a new message
+			messages.push("");
+		}
+		messages[messages.length - 1] += link;
+	}
+	for (let i = 0; i < messages.length; i++) {
+		if (i === 0) {
+			await interaction.reply({
+				content: messages[i],
+				flags: MessageFlags.Ephemeral,
+			});
+		} else {
+			await interaction.followUp({
+				content: messages[i],
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+	}
 }
 
 export { data, execute };
