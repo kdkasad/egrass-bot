@@ -327,7 +327,8 @@ const getUnsolvedAnnouncementsQuery = db.query<
 	FROM announcements AS a
 	LEFT OUTER JOIN user_solves AS s
 	ON s.announcement_id = a.message_id
-	WHERE s.announcement_id IS NULL`,
+	WHERE s.announcement_id IS NULL
+	ORDER BY a.date ASC`,
 );
 export function getUnsolvedAnnouncements(
 	user: User | PartialUser,
