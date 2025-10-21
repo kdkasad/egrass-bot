@@ -364,9 +364,8 @@ async function executeAnnounce(interaction: ChatInputCommandInteraction) {
 		responseMsg = `Error sending announcement: ${(error as Error).message}.`;
 	}
 	// Finalize response
-	await interaction.reply({
+	await interaction.editReply({
 		content: responseMsg,
-		flags: MessageFlags.Ephemeral,
 	});
 }
 
