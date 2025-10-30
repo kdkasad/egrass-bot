@@ -36,6 +36,9 @@ async function handler(message: OmitPartialGroupDMChannel<Message<boolean>>) {
 	)
 		return;
 
+	// Don't include messages sent using /freak
+	if (message.author.bot) return;
+
 	// Skip if message doesn't record a quote
 	const category = getQuoteCategory(message);
 	if (!category) return;

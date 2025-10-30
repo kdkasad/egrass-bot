@@ -34,6 +34,16 @@ interface SchemaVersionRow {
 	version: number;
 }
 
+export interface QuoteRow {
+	category: QuoteCategories;
+	guild_id: string;
+	channel_id: string;
+	message_id: string;
+	quote: string;
+	author_user_id: string;
+	timestamp: number;
+}
+
 export const db = new Database("data.sqlite3", { strict: true, create: true });
 console.log("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
@@ -386,4 +396,12 @@ export function recordQuote(message: Message<true>, category: QuoteCategories) {
 		}
 		throw error;
 	}
+}
+
+const getRandomQuoteInCategoryQuery = db.query<
+	QuoteRow,
+	[QuoteRow["category"]]
+>(`SELECT * FROM quotes WHERE category = ? ORDER BY RANDOM() LIMIT 1`);
+export function getRandomQuoteInCategory(category: QuoteCategories) {
+	return getRandomQuoteInCategoryQuery.get(category);
 }

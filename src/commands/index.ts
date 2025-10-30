@@ -4,6 +4,7 @@ import {
 	type ChatInputCommandInteraction,
 } from "discord.js";
 import * as neetcode from "./neetcode";
+import * as freak from "./freak";
 
 export type CommandHandler = (
 	interaction: ChatInputCommandInteraction,
@@ -14,7 +15,7 @@ export interface Command {
 	execute: CommandHandler;
 }
 
-const commandList: Command[] = [neetcode];
+const commandList: Command[] = [neetcode, freak];
 
 export const commands: Collection<string, Command> = Collection.combineEntries(
 	commandList.map((command) => [command.data.name, command]),
