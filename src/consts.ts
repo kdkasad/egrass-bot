@@ -12,7 +12,6 @@ export enum Stickers {
 }
 
 export enum QuoteCategories {
-	Atharva = "atharva",
 }
 
 /** Maximum length of a Discord message's content */

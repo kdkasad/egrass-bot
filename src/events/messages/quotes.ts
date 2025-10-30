@@ -7,7 +7,7 @@ import {
 	type Client,
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
-import { QuoteCategories, Stickers } from "../../consts";
+import { QuoteCategories } from "../../consts";
 import { recordQuote, UniquenessError } from "../../db";
 
 export function register(client: Client<true>) {
@@ -61,9 +61,7 @@ async function handler(message: OmitPartialGroupDMChannel<Message<boolean>>) {
 }
 
 function getQuoteCategory(message: Message<true>): QuoteCategories | null {
-	if (message.stickers.has(Stickers.AtharvaSays)) {
-		return QuoteCategories.Atharva;
-	}
+	if (message) return null;
 	return null;
 }
 
