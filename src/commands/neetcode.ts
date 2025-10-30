@@ -210,7 +210,7 @@ async function executeSet(interaction: ChatInputCommandInteraction) {
 			setProblemsForDay(daysFromToday, problems);
 		} catch (error) {
 			if (error instanceof UniquenessError) {
-				return `Error: Problem <${error.problemUrl}> is already in the list`;
+				return `Error: ${error.message}`;
 			}
 			throw error;
 		}
