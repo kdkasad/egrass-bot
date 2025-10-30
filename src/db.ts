@@ -1,6 +1,13 @@
 import { Database, SQLiteError } from "bun:sqlite";
 import { getDate } from "./utils";
-import type { Message, PartialMessage, PartialUser, User } from "discord.js";
+import {
+	messageLink,
+	type Message,
+	type PartialMessage,
+	type PartialUser,
+	type User,
+} from "discord.js";
+import type { QuoteCategories } from "./consts";
 
 export interface ProblemPair {
 	url1: string;
@@ -89,6 +96,24 @@ if (version < 2) {
 	db.run(`UPDATE schema_version SET version = 2`);
 	console.debug("Applied migration 2");
 }
+if (version < 3) {
+	db.run(`CREATE TABLE quotes (
+		category TEXT NOT NULL,
+		guild_id TEXT NOT NULL,
+		channel_id TEXT NOT NULL,
+		message_id TEXT NOT NULL,
+		quote TEXT NOT NULL,
+		author_user_id TEXT NOT NULL,
+		timestamp INTEGER NOT NULL
+	) STRICT`);
+	db.run(`CREATE INDEX idx_quotes_category ON quotes(category)`);
+	// Ensure no category has duplicate messages
+	db.run(
+		`CREATE UNIQUE INDEX idx_quotes_category_channel_message ON quotes(category, guild_id, channel_id, message_id)`,
+	);
+	db.run(`UPDATE schema_version SET version = 3`);
+	console.debug("Applied migration 3");
+}
 console.log("Database initialization complete");
 
 const getProblemsQuery = db.query<
@@ -130,7 +155,6 @@ export function setProblemsForDay(
 				) {
 					throw new UniquenessError(
 						`Problem ${url} is already in the list`,
-						url,
 					);
 				}
 				throw error;
@@ -141,12 +165,9 @@ export function setProblemsForDay(
 }
 
 export class UniquenessError extends Error {
-	problemUrl: string;
-
-	constructor(message: string, problemUrl: string) {
+	constructor(message: string) {
 		super(message);
 		this.name = "UniquenessError";
-		this.problemUrl = problemUrl;
 	}
 }
 
@@ -334,4 +355,35 @@ export function getUnsolvedAnnouncements(
 	user: User | PartialUser,
 ): UnsolvedAnnouncement[] {
 	return getUnsolvedAnnouncementsQuery.all(user.id);
+}
+
+const recordQuoteQuery = db.query<
+	null,
+	[QuoteCategories, string, string, string, string, string, number]
+>(
+	`INSERT INTO quotes (category, guild_id, channel_id, message_id, author_user_id, quote, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+);
+export function recordQuote(message: Message<true>, category: QuoteCategories) {
+	const now = Math.floor(Date.now() / 1000);
+	try {
+		recordQuoteQuery.run(
+			category,
+			message.guildId,
+			message.channelId,
+			message.id,
+			message.author.id,
+			message.content.trim(),
+			now,
+		);
+	} catch (error) {
+		if (
+			error instanceof SQLiteError &&
+			error.code === "SQLITE_CONSTRAINT_UNIQUE"
+		) {
+			throw new UniquenessError(
+				`Message ${messageLink(message.channelId, message.id, message.guildId)} is already quoted in category ${category}`,
+			);
+		}
+		throw error;
+	}
 }

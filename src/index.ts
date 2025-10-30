@@ -27,7 +27,12 @@ try {
 
 // Create a new client instance
 const client = new Client({
-	intents: [GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.Guilds],
+	intents: [
+		GatewayIntentBits.GuildMessageReactions,
+		GatewayIntentBits.Guilds,
+		GatewayIntentBits.GuildMessages,
+		GatewayIntentBits.MessageContent,
+	],
 	partials: [Partials.Reaction, Partials.Message],
 });
 
