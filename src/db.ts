@@ -512,7 +512,8 @@ const createMarkov4EntryQuery = db.query<
 	VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
 export function createMarkov4Entry(
-	message: Message,
+	messageId: Markov4Row["message_id"],
+	authorId: Markov4Row["author_id"],
 	word1: string | null,
 	word2: string | null,
 	word3: string | null,
@@ -520,8 +521,8 @@ export function createMarkov4Entry(
 	word5: string | null,
 ) {
 	return createMarkov4EntryQuery.run(
-		message.id,
-		message.author.id,
+		messageId,
+		authorId,
 		word1,
 		word2,
 		word3,
@@ -655,4 +656,12 @@ export function getNextMarkovToken(
 		);
 	}
 	return row2?.word5 ?? null;
+}
+
+export function getAllMessages(): IterableIterator<MessageRow> {
+	return db.query<MessageRow, []>(`SELECT * FROM messages`).iterate();
+}
+
+export function clearMarkovModel() {
+	return db.query(`DELETE FROM markov4`).run();
 }

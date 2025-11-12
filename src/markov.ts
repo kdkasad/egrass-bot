@@ -1,6 +1,14 @@
-import type { Message } from "discord.js";
+import { Collection, type Client, type Message } from "discord.js";
 import { Tokenizr } from "tokenizr";
-import { createMarkov4Entry, doInTransaction, getNextMarkovToken } from "./db";
+import {
+	clearMarkovModel,
+	createMarkov4Entry,
+	db,
+	doInTransaction,
+	getAllMessages,
+	getNextMarkovToken,
+	type Markov4Row,
+} from "./db";
 
 enum Tokens {
 	Space = "space",
@@ -31,11 +39,15 @@ export function* tokenize(message: string) {
 	}
 }
 
-export function addMessageToMarkov4(message: Message) {
+export function addMessageToMarkov4(
+	message: Pick<Message, "id" | "content">,
+	authorId: Markov4Row["author_id"],
+) {
 	const prefix: (string | null)[] = [null, null, null, null];
 	for (const token of tokenize(message.content)) {
 		createMarkov4Entry(
-			message,
+			message.id,
+			authorId,
 			prefix[0],
 			prefix[1],
 			prefix[2],
@@ -66,4 +78,38 @@ export function generateSentence(authorId?: string): string {
 		}
 	})();
 	return tokens.join("");
+}
+
+export async function retrainModel(client: Client<true>) {
+	console.log("Retraining model...");
+
+	// Populate users in cache
+	console.debug("Fetching users...");
+	const fetchUserPromises = new Collection<string, Promise<unknown>>();
+	for (const message of getAllMessages()) {
+		if (!fetchUserPromises.has(message.author_id)) {
+			fetchUserPromises.set(
+				message.author_id,
+				client.users.fetch(message.author_id, {
+					cache: true,
+					force: true,
+				}),
+			);
+		}
+	}
+	console.debug("Done iterating to find users; waiting for fetch results...");
+	await Promise.all(fetchUserPromises.values());
+	console.debug("Done fetching users");
+
+	console.debug("Populating markov4 table...");
+	doInTransaction(async () => {
+		clearMarkovModel();
+		for (const message of getAllMessages()) {
+			const user = client.users.cache.get(message.author_id);
+			if (user?.bot) continue;
+			addMessageToMarkov4(message, message.author_id);
+		}
+	})();
+	console.debug("Done populating markov4 table");
+	console.log("Done re-training");
 }

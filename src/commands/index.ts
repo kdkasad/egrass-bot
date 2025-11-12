@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import * as neetcode from "./neetcode";
 import * as imitate from "./imitate";
+import * as retrainMarkov from "./retrain-markov";
 
 export type CommandHandler = (
 	interaction: ChatInputCommandInteraction,
@@ -15,7 +16,7 @@ export interface Command {
 	execute: CommandHandler;
 }
 
-const commandList: Command[] = [neetcode, imitate];
+const commandList: Command[] = [neetcode, imitate, retrainMarkov];
 
 export const commands: Collection<string, Command> = Collection.combineEntries(
 	commandList.map((command) => [command.data.name, command]),
