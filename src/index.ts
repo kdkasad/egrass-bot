@@ -47,6 +47,8 @@ client.once(Events.ClientReady, (readyClient) => {
 
 	for (const job of jobs) {
 		const task = job.createJob(readyClient);
+		if (!task)
+			continue;
 		const nextRun = task.getNextRun();
 		if (task.name && nextRun) {
 			console.debug(

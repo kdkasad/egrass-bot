@@ -2,8 +2,10 @@ import cron from "node-cron";
 import { getProblemsForDay } from "../db";
 import { channelMention, type Client } from "discord.js";
 import { Channels, Users } from "../consts";
+import { env } from "../env";
 
 export function createJob(client: Client<true>) {
+	if (env.DISABLE_NEETCODE_ANNOUNCEMENTS) return null;
 	return cron.schedule(
 		"0 22 * * *",
 		async () => {

@@ -5,7 +5,7 @@ import * as announce from "./announce";
 import * as warnAlex from "./warn-alex";
 
 export interface Job {
-	createJob(client: Client<true>): ScheduledTask;
+	createJob(client: Client<true>): ScheduledTask | null;
 }
 
 export const jobs: Job[] = [announce, warnAlex];

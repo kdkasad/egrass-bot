@@ -10,8 +10,10 @@ import {
 } from "discord.js";
 import { Channels, Users } from "../consts";
 import { extractProblemId, formatProblemUrls } from "../utils";
+import { env } from "../env";
 
 export function createJob(client: Client<true>) {
+	if (env.DISABLE_NEETCODE_ANNOUNCEMENTS) return null;
 	return cron.schedule(
 		"0 0 * * *",
 		async () => {
