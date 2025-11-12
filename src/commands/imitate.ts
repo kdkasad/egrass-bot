@@ -32,6 +32,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 			});
 		}
 	} catch (error) {
+		if (error instanceof Error) {
+			await interaction.reply({
+				content: `⚠️ Error generating message: ${error.message}`,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 		console.error(error);
 	}
 }

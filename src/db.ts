@@ -55,6 +55,7 @@ export interface MessageRow {
 
 export interface Markov4Row {
 	message_id: MessageRow["id"];
+	author_id: MessageRow["author_id"];
 	word1: string | null;
 	word2: string | null;
 	word3: string | null;
@@ -167,6 +168,19 @@ if (version < 4) {
 	);
 	db.run(`UPDATE schema_version SET version = 4`);
 	console.debug("Applied migration 4");
+}
+if (version < 5) {
+	db.transaction(() => {
+		db.run(`ALTER TABLE markov4 ADD COLUMN author_id TEXT`);
+		db.run(
+			`UPDATE markov4 SET author_id = (SELECT author_id FROM messages WHERE id = markov4.message_id)`,
+		);
+		db.run(
+			`CREATE INDEX idx_markov4_author_prefix ON markov4 (author_id, word1, word2, word3, word4)`,
+		);
+		db.run(`UPDATE schema_version SET version = 5`);
+	})();
+	console.debug("Applied migration 5");
 }
 console.log("Database initialization complete");
 
@@ -486,6 +500,7 @@ const createMarkov4EntryQuery = db.query<
 	null,
 	[
 		Markov4Row["message_id"],
+		Markov4Row["author_id"],
 		Markov4Row["word1"],
 		Markov4Row["word2"],
 		Markov4Row["word3"],
@@ -493,7 +508,8 @@ const createMarkov4EntryQuery = db.query<
 		Markov4Row["word5"],
 	]
 >(
-	`INSERT INTO markov4 (message_id, word1, word2, word3, word4, word5) VALUES (?, ?, ?, ?, ?, ?)`,
+	`INSERT INTO markov4 (message_id, author_id, word1, word2, word3, word4, word5)
+	VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
 export function createMarkov4Entry(
 	message: Message,
@@ -505,6 +521,7 @@ export function createMarkov4Entry(
 ) {
 	return createMarkov4EntryQuery.run(
 		message.id,
+		message.author.id,
 		word1,
 		word2,
 		word3,
@@ -513,10 +530,10 @@ export function createMarkov4Entry(
 	);
 }
 
-const nextTokenCandidateCountQuery = db.query<
+const nextTokenCandidateCountWithAuthorQuery = db.query<
 	{ count: number },
 	[
-		MessageRow["author_id"] | null,
+		Markov4Row["author_id"],
 		Markov4Row["word1"],
 		Markov4Row["word2"],
 		Markov4Row["word3"],
@@ -525,18 +542,17 @@ const nextTokenCandidateCountQuery = db.query<
 >(
 	`SELECT count(*) AS "count"
 	FROM markov4
-	JOIN messages ON markov4.message_id = messages.id
 	WHERE
-		(?1 IS NULL OR messages.author_id = ?1)
-		AND markov4.word1 IS ?2
-		AND markov4.word2 IS ?3
-		AND markov4.word3 IS ?4
-		AND markov4.word4 IS ?5`,
+		author_id = ?
+		AND word1 IS ?
+		AND word2 IS ?
+		AND word3 IS ?
+		AND word4 IS ?`,
 );
-const nextTokenQuery = db.query<
+const nextTokenWithAuthorQuery = db.query<
 	Pick<Markov4Row, "word5">,
 	[
-		MessageRow["author_id"] | null,
+		Markov4Row["author_id"],
 		Markov4Row["word1"],
 		Markov4Row["word2"],
 		Markov4Row["word3"],
@@ -544,17 +560,53 @@ const nextTokenQuery = db.query<
 		number,
 	]
 >(
-	`SELECT markov4.word5
+	`SELECT word5
 	FROM markov4
-	JOIN messages ON markov4.message_id = messages.id
 	WHERE
-		(?1 IS NULL OR messages.author_id = ?1)
-		AND markov4.word1 IS ?2
-		AND markov4.word2 IS ?3
-		AND markov4.word3 IS ?4
-		AND markov4.word4 IS ?5
+		author_id = ?
+		AND word1 IS ?
+		AND word2 IS ?
+		AND word3 IS ?
+		AND word4 IS ?
 	LIMIT 1
-	OFFSET ?6`,
+	OFFSET ?`,
+);
+const nextTokenCandidateCountWithoutAuthorQuery = db.query<
+	{ count: number },
+	[
+		Markov4Row["word1"],
+		Markov4Row["word2"],
+		Markov4Row["word3"],
+		Markov4Row["word4"],
+	]
+>(
+	`SELECT count(*) AS "count"
+	FROM markov4
+	WHERE
+		word1 IS ?
+		AND word2 IS ?
+		AND word3 IS ?
+		AND word4 IS ?`,
+);
+const nextTokenWithoutAuthorQuery = db.query<
+	Pick<Markov4Row, "word5">,
+	[
+		Markov4Row["word1"],
+		Markov4Row["word2"],
+		Markov4Row["word3"],
+		Markov4Row["word4"],
+		number,
+	]
+>(
+	`SELECT word5
+	FROM markov4
+	WHERE
+		word1 IS ?
+		AND word2 IS ?
+		AND word3 IS ?
+		AND word4 IS ?
+	LIMIT 1
+	OFFSET ?`,
 );
 export function getNextMarkovToken(
 	authorId: MessageRow["author_id"] | undefined,
@@ -563,18 +615,44 @@ export function getNextMarkovToken(
 	word3: string | null,
 	word4: string | null,
 ): string | null {
-	const count =
-		nextTokenCandidateCountQuery.get(
-			authorId ?? null,
+	let row: { count: number } | null;
+	if (authorId !== undefined) {
+		row = nextTokenCandidateCountWithAuthorQuery.get(
+			authorId,
 			word1,
 			word2,
 			word3,
 			word4,
-		)?.count ?? 0;
+		);
+	} else {
+		row = nextTokenCandidateCountWithoutAuthorQuery.get(
+			word1,
+			word2,
+			word3,
+			word4,
+		);
+	}
+	const count = row?.count ?? 0;
 	if (count === 0) return null;
 	const offset = Math.floor(Math.random() * count);
-	return (
-		nextTokenQuery.get(authorId ?? null, word1, word2, word3, word4, offset)
-			?.word5 ?? null
-	);
+	let row2: Pick<Markov4Row, "word5"> | null;
+	if (authorId !== undefined) {
+		row2 = nextTokenWithAuthorQuery.get(
+			authorId,
+			word1,
+			word2,
+			word3,
+			word4,
+			offset,
+		);
+	} else {
+		row2 = nextTokenWithoutAuthorQuery.get(
+			word1,
+			word2,
+			word3,
+			word4,
+			offset,
+		);
+	}
+	return row2?.word5 ?? null;
 }

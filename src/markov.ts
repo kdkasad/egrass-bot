@@ -60,6 +60,9 @@ export function generateSentence(authorId?: string): string {
 			);
 			if (token === null) break;
 			tokens.push(token);
+			if (tokens.length > 1000) {
+				throw new Error("runaway message");
+			}
 		}
 	})();
 	return tokens.join("");
