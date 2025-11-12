@@ -22,6 +22,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		if (sentence.length > 0) {
 			await interaction.reply({
 				content: sentence,
+				allowedMentions: { parse: [] },
 			});
 		} else {
 			await interaction.reply({
