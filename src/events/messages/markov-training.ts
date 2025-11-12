@@ -11,7 +11,9 @@ export function register(client: Client<true>) {
 const saveAndTrainOnMessageTransaction = doInTransaction(
 	(message: Message<true>) => {
 		createMessage(message);
-		addMessageToMarkov4(message);
+		if (!message.author.bot) {
+			addMessageToMarkov4(message);
+		}
 	},
 );
 
