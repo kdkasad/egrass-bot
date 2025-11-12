@@ -44,6 +44,24 @@ export interface QuoteRow {
 	timestamp: number;
 }
 
+export interface MessageRow {
+	id: string;
+	guild_id: string;
+	channel_id: string;
+	author_id: string;
+	timestamp: number;
+	content: string;
+}
+
+export interface Markov4Row {
+	message_id: MessageRow["id"];
+	word1: string | null;
+	word2: string | null;
+	word3: string | null;
+	word4: string | null;
+	word5: string | null;
+}
+
 export const db = new Database("data.sqlite3", { strict: true, create: true });
 console.log("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
@@ -123,6 +141,30 @@ if (version < 3) {
 	);
 	db.run(`UPDATE schema_version SET version = 3`);
 	console.debug("Applied migration 3");
+}
+if (version < 4) {
+	db.run(`CREATE TABLE messages (
+		id TEXT PRIMARY KEY,
+		guild_id TEXT NOT NULL,
+		channel_id TEXT NOT NULL,
+		author_id TEXT NOT NULL,
+		timestamp INTEGER NOT NULL,
+		content TEXT NOT NULL
+	) STRICT`);
+	db.run(`CREATE INDEX idx_messages_author ON messages (author_id)`);
+	db.run(`CREATE TABLE markov4 (
+		message_id TEXT NOT NULL,
+		word1 TEXT,
+		word2 TEXT,
+		word3 TEXT,
+		word4 TEXT,
+		word5 TEXT,
+		FOREIGN KEY (message_id) REFERENCES messages (id)
+	)`);
+	db.run(`CREATE INDEX idx_markov4_message_id ON markov4 (message_id)`);
+	db.run(`CREATE INDEX idx_markov4_prefix ON markov4 (word1, word2, word3, word4)`);
+	db.run(`UPDATE schema_version SET version = 4`);
+	console.debug("Applied migration 4");
 }
 console.log("Database initialization complete");
 
@@ -404,4 +446,60 @@ const getRandomQuoteInCategoryQuery = db.query<
 >(`SELECT * FROM quotes WHERE category = ? ORDER BY RANDOM() LIMIT 1`);
 export function getRandomQuoteInCategory(category: QuoteCategories) {
 	return getRandomQuoteInCategoryQuery.get(category);
+}
+
+/**
+ * Forwards to {@linkcode db.transaction()}.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function doInTransaction<A extends any[], R>(fn: (...args: A) => R) {
+	return db.transaction(fn);
+}
+
+const insertMessageQuery = db.query<
+	null,
+	[
+		MessageRow["id"],
+		MessageRow["channel_id"],
+		MessageRow["guild_id"],
+		MessageRow["author_id"],
+		MessageRow["timestamp"],
+		MessageRow["content"],
+	]
+>(
+	`INSERT INTO messages (id, channel_id, guild_id, author_id, timestamp, content) VALUES (?, ?, ?, ?, ?, ?)`,
+);
+export function createMessage(message: Message<true>) {
+	return insertMessageQuery.run(
+		message.id,
+		message.channelId,
+		message.guildId,
+		message.author.id,
+		Math.floor(message.createdTimestamp / 1000),
+		message.content,
+	);
+}
+
+const createMarkov4EntryQuery = db.query<
+	null,
+	[
+		Markov4Row["message_id"],
+		Markov4Row["word1"],
+		Markov4Row["word2"],
+		Markov4Row["word3"],
+		Markov4Row["word4"],
+		Markov4Row["word5"],
+	]
+>(
+	`INSERT INTO markov4 (message_id, word1, word2, word3, word4, word5) VALUES (?, ?, ?, ?, ?, ?)`,
+);
+export function createMarkov4Entry(
+	message: Message,
+	word1: string | null,
+	word2: string | null,
+	word3: string | null,
+	word4: string | null,
+	word5: string | null,
+) {
+	return createMarkov4EntryQuery.run(message.id, word1, word2, word3, word4, word5);
 }
