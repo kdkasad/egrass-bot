@@ -14,5 +14,9 @@ export enum Stickers {
 export enum QuoteCategories {
 }
 
+export enum Guilds {
+	Egrass = "1154149509446770808",
+}
+
 /** Maximum length of a Discord message's content */
 export const MAX_MSG_CONTENT_LENGTH = 2000;

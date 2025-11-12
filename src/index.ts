@@ -9,9 +9,9 @@ import {
 } from "discord.js";
 import { commands } from "./commands";
 import { env } from "./env";
-import { db } from "./db";
 import { jobs } from "./jobs";
 import * as events from "./events";
+import { closeDatabase } from "./db";
 
 // Update application commands
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
@@ -31,6 +31,7 @@ const client = new Client({
 		GatewayIntentBits.GuildMessageReactions,
 		GatewayIntentBits.Guilds,
 		GatewayIntentBits.GuildMessages,
+		GatewayIntentBits.GuildMembers,
 		GatewayIntentBits.MessageContent,
 	],
 	partials: [Partials.Reaction, Partials.Message],
@@ -47,8 +48,7 @@ client.once(Events.ClientReady, (readyClient) => {
 
 	for (const job of jobs) {
 		const task = job.createJob(readyClient);
-		if (!task)
-			continue;
+		if (!task) continue;
 		const nextRun = task.getNextRun();
 		if (task.name && nextRun) {
 			console.debug(
@@ -79,7 +79,7 @@ process.on("SIGTERM", signalHandler);
 process.on("exit", () => {
 	client.destroy();
 	console.debug("Client destroyed");
-	db.close(false);
+	closeDatabase(false);
 	console.debug("Database connection closed");
 });
 

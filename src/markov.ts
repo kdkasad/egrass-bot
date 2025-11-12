@@ -1,14 +1,14 @@
-import { Collection, type Client, type Message } from "discord.js";
+import { type Client, type Message } from "discord.js";
 import { Tokenizr } from "tokenizr";
 import {
 	clearMarkovModel,
 	createMarkov4Entry,
-	db,
 	doInTransaction,
 	getAllMessages,
 	getNextMarkovToken,
 	type Markov4Row,
 } from "./db";
+import { Guilds } from "./consts";
 
 enum Tokens {
 	Space = "space",
@@ -57,6 +57,15 @@ export function addMessageToMarkov4(
 		prefix.shift();
 		prefix.push(token);
 	}
+	createMarkov4Entry(
+		message.id,
+		authorId,
+		prefix[0],
+		prefix[1],
+		prefix[2],
+		prefix[3],
+		null,
+	);
 }
 
 export function generateSentence(authorId?: string): string {
@@ -84,22 +93,8 @@ export async function retrainModel(client: Client<true>) {
 	console.log("Retraining model...");
 
 	// Populate users in cache
-	console.debug("Fetching users...");
-	const fetchUserPromises = new Collection<string, Promise<unknown>>();
-	for (const message of getAllMessages()) {
-		if (!fetchUserPromises.has(message.author_id)) {
-			fetchUserPromises.set(
-				message.author_id,
-				client.users.fetch(message.author_id, {
-					cache: true,
-					force: true,
-				}),
-			);
-		}
-	}
-	console.debug("Done iterating to find users; waiting for fetch results...");
-	await Promise.all(fetchUserPromises.values());
-	console.debug("Done fetching users");
+	const guild = await client.guilds.fetch(Guilds.Egrass);
+	await guild.members.fetch();
 
 	console.debug("Populating markov4 table...");
 	doInTransaction(async () => {

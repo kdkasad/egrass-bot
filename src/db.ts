@@ -63,7 +63,7 @@ export interface Markov4Row {
 	word5: string | null;
 }
 
-export const db = new Database("data.sqlite3", { strict: true, create: true });
+const db = new Database("data.sqlite3", { strict: true, create: true });
 console.log("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
 db.run("PRAGMA foreign_keys = ON");
@@ -183,6 +183,10 @@ if (version < 5) {
 	console.debug("Applied migration 5");
 }
 console.log("Database initialization complete");
+
+export function closeDatabase(throwOnError: boolean) {
+	return db.close(throwOnError);
+}
 
 const getProblemsQuery = db.query<
 	Pick<ProblemsRow, "url">,
@@ -485,8 +489,27 @@ const insertMessageQuery = db.query<
 >(
 	`INSERT INTO messages (id, channel_id, guild_id, author_id, timestamp, content) VALUES (?, ?, ?, ?, ?, ?)`,
 );
-export function createMessage(message: Message<true>) {
-	return insertMessageQuery.run(
+const insertOrIgnoreMessageQuery = db.query<
+	null,
+	[
+		MessageRow["id"],
+		MessageRow["channel_id"],
+		MessageRow["guild_id"],
+		MessageRow["author_id"],
+		MessageRow["timestamp"],
+		MessageRow["content"],
+	]
+>(
+	`INSERT OR IGNORE INTO messages (id, channel_id, guild_id, author_id, timestamp, content) VALUES (?, ?, ?, ?, ?, ?)`,
+);
+export function createMessage(
+	message: Message<true>,
+	ignoreDuplicates: boolean = false,
+) {
+	const query = ignoreDuplicates
+		? insertOrIgnoreMessageQuery
+		: insertMessageQuery;
+	return query.run(
 		message.id,
 		message.channelId,
 		message.guildId,
