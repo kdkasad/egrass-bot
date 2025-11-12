@@ -162,7 +162,9 @@ if (version < 4) {
 		FOREIGN KEY (message_id) REFERENCES messages (id)
 	)`);
 	db.run(`CREATE INDEX idx_markov4_message_id ON markov4 (message_id)`);
-	db.run(`CREATE INDEX idx_markov4_prefix ON markov4 (word1, word2, word3, word4)`);
+	db.run(
+		`CREATE INDEX idx_markov4_prefix ON markov4 (word1, word2, word3, word4)`,
+	);
 	db.run(`UPDATE schema_version SET version = 4`);
 	console.debug("Applied migration 4");
 }
@@ -501,5 +503,78 @@ export function createMarkov4Entry(
 	word4: string | null,
 	word5: string | null,
 ) {
-	return createMarkov4EntryQuery.run(message.id, word1, word2, word3, word4, word5);
+	return createMarkov4EntryQuery.run(
+		message.id,
+		word1,
+		word2,
+		word3,
+		word4,
+		word5,
+	);
+}
+
+const nextTokenCandidateCountQuery = db.query<
+	{ count: number },
+	[
+		MessageRow["author_id"] | null,
+		Markov4Row["word1"],
+		Markov4Row["word2"],
+		Markov4Row["word3"],
+		Markov4Row["word4"],
+	]
+>(
+	`SELECT count(*) AS "count"
+	FROM markov4
+	JOIN messages ON markov4.message_id = messages.id
+	WHERE
+		(?1 IS NULL OR messages.author_id = ?1)
+		AND markov4.word1 IS ?2
+		AND markov4.word2 IS ?3
+		AND markov4.word3 IS ?4
+		AND markov4.word4 IS ?5`,
+);
+const nextTokenQuery = db.query<
+	Pick<Markov4Row, "word5">,
+	[
+		MessageRow["author_id"] | null,
+		Markov4Row["word1"],
+		Markov4Row["word2"],
+		Markov4Row["word3"],
+		Markov4Row["word4"],
+		number,
+	]
+>(
+	`SELECT markov4.word5
+	FROM markov4
+	JOIN messages ON markov4.message_id = messages.id
+	WHERE
+		(?1 IS NULL OR messages.author_id = ?1)
+		AND markov4.word1 IS ?2
+		AND markov4.word2 IS ?3
+		AND markov4.word3 IS ?4
+		AND markov4.word4 IS ?5
+	LIMIT 1
+	OFFSET ?6`,
+);
+export function getNextMarkovToken(
+	authorId: MessageRow["author_id"] | undefined,
+	word1: string | null,
+	word2: string | null,
+	word3: string | null,
+	word4: string | null,
+): string | null {
+	const count =
+		nextTokenCandidateCountQuery.get(
+			authorId ?? null,
+			word1,
+			word2,
+			word3,
+			word4,
+		)?.count ?? 0;
+	if (count === 0) return null;
+	const offset = Math.floor(Math.random() * count);
+	return (
+		nextTokenQuery.get(authorId ?? null, word1, word2, word3, word4, offset)
+			?.word5 ?? null
+	);
 }

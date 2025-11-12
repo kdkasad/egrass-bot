@@ -1,6 +1,6 @@
 import type { Message } from "discord.js";
 import { Tokenizr } from "tokenizr";
-import { createMarkov4Entry } from "./db";
+import { createMarkov4Entry, doInTransaction, getNextMarkovToken } from "./db";
 
 enum Tokens {
 	Space = "space",
@@ -45,4 +45,22 @@ export function addMessageToMarkov4(message: Message) {
 		prefix.shift();
 		prefix.push(token);
 	}
+}
+
+export function generateSentence(authorId?: string): string {
+	const tokens: string[] = [];
+	doInTransaction(() => {
+		while (true) {
+			const token = getNextMarkovToken(
+				authorId,
+				tokens.at(-4) ?? null,
+				tokens.at(-3) ?? null,
+				tokens.at(-2) ?? null,
+				tokens.at(-1) ?? null,
+			);
+			if (token === null) break;
+			tokens.push(token);
+		}
+	})();
+	return tokens.join("");
 }
