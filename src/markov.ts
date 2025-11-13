@@ -103,7 +103,7 @@ export async function retrainModel(client: Client<true>) {
 	await guild.members.fetch();
 
 	console.debug("Populating markov4 table...");
-	doInTransaction(async () => {
+	doInTransaction(() => {
 		clearMarkovModel();
 		for (const message of getAllMessages()) {
 			const user = client.users.cache.get(message.author_id);

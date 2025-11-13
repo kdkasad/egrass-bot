@@ -471,8 +471,9 @@ export function getRandomQuoteInCategory(category: QuoteCategories) {
 /**
  * Forwards to {@linkcode db.transaction()}.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function doInTransaction<A extends any[], R>(fn: (...args: A) => R) {
+export function doInTransaction<A extends unknown[], R>(
+	fn: (...args: A) => R extends PromiseLike<unknown> ? never : R,
+) {
 	return db.transaction(fn);
 }
 
