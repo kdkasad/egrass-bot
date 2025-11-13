@@ -12,7 +12,7 @@ const saveAndTrainOnMessageTransaction = doInTransaction(
 	(message: Message<true>) => {
 		createMessage(message);
 		if (!message.author.bot) {
-			addMessageToMarkov4(message);
+			addMessageToMarkov4(message, message.author.id);
 		}
 	},
 );
