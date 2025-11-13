@@ -688,3 +688,7 @@ export function getAllMessages(): IterableIterator<MessageRow> {
 export function clearMarkovModel() {
 	return db.query(`DELETE FROM markov4`).run();
 }
+
+export function vacuum() {
+	return db.query(`VACUUM`).run();
+}

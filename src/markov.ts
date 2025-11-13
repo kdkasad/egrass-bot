@@ -6,6 +6,7 @@ import {
 	doInTransaction,
 	getAllMessages,
 	getNextMarkovToken,
+	vacuum,
 	type Markov4Row,
 } from "./db";
 import { Guilds } from "./consts";
@@ -109,6 +110,7 @@ export async function retrainModel(client: Client<true>) {
 			if (user?.bot) continue;
 			addMessageToMarkov4(message, message.author_id);
 		}
+		vacuum();
 	})();
 	console.debug("Done populating markov4 table");
 	console.log("Done re-training");
