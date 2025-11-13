@@ -68,8 +68,9 @@ export function addMessageToMarkov4(
 	);
 }
 
-export function generateSentence(authorId?: string): string {
-	const tokens: string[] = [];
+export function generateSentence(prompt: string, authorId?: string): string {
+	const tokens = Array.from(tokenize(prompt));
+	let isFirstToken = true;
 	doInTransaction(() => {
 		while (true) {
 			const token = getNextMarkovToken(
@@ -80,12 +81,16 @@ export function generateSentence(authorId?: string): string {
 				tokens.at(-1) ?? null,
 			);
 			if (token === null) break;
+			isFirstToken = false;
 			tokens.push(token);
 			if (tokens.length > 1000) {
 				throw new Error("runaway message");
 			}
 		}
 	})();
+	if (isFirstToken) {
+		throw new Error("cannot extrapolate the given prompt");
+	}
 	return tokens.join("");
 }
 
