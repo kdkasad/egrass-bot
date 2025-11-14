@@ -3,7 +3,7 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
-import { generateSentence } from "../markov";
+import { CannotExtrapolate, generateSentence } from "../markov";
 
 export const data = new SlashCommandBuilder()
 	.setName("imitate")
@@ -40,11 +40,23 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		}
 	} catch (error) {
 		if (error instanceof Error) {
+			if (error instanceof CannotExtrapolate) {
+				if (error.prompt === "") {
+					const targetStr =
+						target !== null
+							? `@${interaction.guild?.members.cache.get(target.id)?.displayName} (${target.id})`
+							: "null";
+					console.warn(
+						`Failed to extrapolate empty prompt; target = ${targetStr}`,
+					);
+				}
+			} else {
+				console.error(error);
+			}
 			await interaction.reply({
 				content: `⚠️ Error generating message: ${error.message}`,
 				flags: MessageFlags.Ephemeral,
 			});
 		}
-		console.error(error);
 	}
 }

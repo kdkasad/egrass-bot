@@ -69,6 +69,15 @@ export function addMessageToMarkov4(
 	);
 }
 
+export class CannotExtrapolate extends Error {
+	public prompt: string;
+
+	constructor(prompt: string) {
+		super(`cannot extrapolate from prompt "${prompt}"`);
+		this.prompt = prompt;
+	}
+}
+
 export function generateSentence(prompt: string, authorId?: string): string {
 	const tokens = Array.from(tokenize(prompt));
 	let isFirstToken = true;
@@ -90,7 +99,7 @@ export function generateSentence(prompt: string, authorId?: string): string {
 		}
 	})();
 	if (isFirstToken) {
-		throw new Error("cannot extrapolate the given prompt");
+		throw new CannotExtrapolate(prompt);
 	}
 	return tokens.join("");
 }
