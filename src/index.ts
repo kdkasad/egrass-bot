@@ -12,18 +12,17 @@ import { env } from "./env";
 import { jobs } from "./jobs";
 import * as events from "./events";
 import { closeDatabase } from "./db";
+import { log } from "./logging";
+import { wrapError } from "./utils";
 
 // Update application commands
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
-try {
+wrapError("failed to update application commands", () => {
 	rest.put(Routes.applicationCommands(env.DISCORD_CLIENT_ID), {
 		body: commands.map((command) => command.data.toJSON()),
 	});
-	console.log("Application commands updated");
-} catch (error) {
-	console.error("Failed to update application commands", error);
-	process.exit(1);
-}
+	log.info("Application commands updated");
+});
 
 // Create a new client instance
 const client = new Client({
@@ -39,7 +38,7 @@ const client = new Client({
 
 // When the client is ready, run this code (only once).
 client.once(Events.ClientReady, (readyClient) => {
-	console.log(`Logged in as ${readyClient.user.tag}`);
+	log.info(`Logged in`, { tag: readyClient.user.tag });
 
 	readyClient.user.setActivity({
 		name: "you",
@@ -51,7 +50,7 @@ client.once(Events.ClientReady, (readyClient) => {
 		if (!task) continue;
 		const nextRun = task.getNextRun();
 		if (task.name && nextRun) {
-			console.debug(
+			log.info(
 				`Job ${task.name} will first run at ${nextRun.toUTCString()}`,
 			);
 		}
@@ -71,16 +70,16 @@ client.on(Events.InteractionCreate, (interaction) => {
 // For some reason, the program doesn't seem to stop when it gets a signal
 // unless we handle it explicitly.
 const signalHandler: NodeJS.SignalsListener = (signal) => {
-	console.warn(`Received ${signal}; exiting...`);
+	log.warn("Received signal; exiting...", { signal });
 	process.exit();
 };
 process.on("SIGINT", signalHandler);
 process.on("SIGTERM", signalHandler);
 process.on("exit", () => {
 	client.destroy();
-	console.debug("Client destroyed");
+	log.info("Client destroyed");
 	closeDatabase(false);
-	console.debug("Database connection closed");
+	log.info("Database connection closed");
 });
 
 // Log in to Discord

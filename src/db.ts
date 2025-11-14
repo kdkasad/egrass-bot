@@ -8,6 +8,7 @@ import {
 	type User,
 } from "discord.js";
 import type { QuoteCategories } from "./consts";
+import { log } from "./logging";
 
 export interface ProblemPair {
 	url1: string;
@@ -64,7 +65,7 @@ export interface Markov4Row {
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
-console.log("Created database");
+log.info("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
 db.run("PRAGMA foreign_keys = ON");
 db.run(`CREATE TABLE IF NOT EXISTS schema_version (
@@ -100,7 +101,7 @@ if (version < 1) {
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_solves_user_id_announcement_id ON solves(user_id, announcement_id)",
 	);
 	db.run(`INSERT INTO schema_version (version) VALUES (1)`);
-	console.debug("Applied migration 1");
+	log.debug("Applied migration 1");
 }
 if (version < 2) {
 	// Remove NOT NULL constraint from solves.solve_time
@@ -123,7 +124,7 @@ if (version < 2) {
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_solves_user_id_announcement_id ON solves(user_id, announcement_id)",
 	);
 	db.run(`UPDATE schema_version SET version = 2`);
-	console.debug("Applied migration 2");
+	log.debug("Applied migration 2");
 }
 if (version < 3) {
 	db.run(`CREATE TABLE quotes (
@@ -141,7 +142,7 @@ if (version < 3) {
 		`CREATE UNIQUE INDEX idx_quotes_category_channel_message ON quotes(category, guild_id, channel_id, message_id)`,
 	);
 	db.run(`UPDATE schema_version SET version = 3`);
-	console.debug("Applied migration 3");
+	log.debug("Applied migration 3");
 }
 if (version < 4) {
 	db.run(`CREATE TABLE messages (
@@ -167,7 +168,7 @@ if (version < 4) {
 		`CREATE INDEX idx_markov4_prefix ON markov4 (word1, word2, word3, word4)`,
 	);
 	db.run(`UPDATE schema_version SET version = 4`);
-	console.debug("Applied migration 4");
+	log.debug("Applied migration 4");
 }
 if (version < 5) {
 	db.transaction(() => {
@@ -180,9 +181,9 @@ if (version < 5) {
 		);
 		db.run(`UPDATE schema_version SET version = 5`);
 	})();
-	console.debug("Applied migration 5");
+	log.debug("Applied migration 5");
 }
-console.log("Database initialization complete");
+log.info("Database initialization complete");
 
 export function closeDatabase(throwOnError: boolean) {
 	return db.close(throwOnError);

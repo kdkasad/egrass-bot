@@ -3,6 +3,7 @@ import { getProblemsForDay } from "../db";
 import { channelMention, type Client } from "discord.js";
 import { Channels, Users } from "../consts";
 import { env } from "../env";
+import { log } from "../logging";
 
 export function createJob(client: Client<true>) {
 	if (env.DISABLE_NEETCODE_ANNOUNCEMENTS) return null;
@@ -12,7 +13,7 @@ export function createJob(client: Client<true>) {
 			try {
 				await execute(client);
 			} catch (error) {
-				console.error("Error running warn-alex job", error);
+				log.error("Error running warn-alex job", error);
 			}
 		},
 		{ name: "warn-alex" },

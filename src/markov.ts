@@ -10,6 +10,7 @@ import {
 	type Markov4Row,
 } from "./db";
 import { Guilds } from "./consts";
+import { log } from "./logging";
 
 enum Tokens {
 	Space = "space",
@@ -105,13 +106,13 @@ export function generateSentence(prompt: string, authorId?: string): string {
 }
 
 export async function retrainModel(client: Client<true>) {
-	console.log("Retraining model...");
+	log.info("Retraining model...");
 
 	// Populate users in cache
 	const guild = await client.guilds.fetch(Guilds.Egrass);
 	await guild.members.fetch();
 
-	console.debug("Populating markov4 table...");
+	log.debug("Populating markov4 table...");
 	doInTransaction(() => {
 		clearMarkovModel();
 		for (const message of getAllMessages()) {
@@ -121,6 +122,6 @@ export async function retrainModel(client: Client<true>) {
 		}
 		vacuum();
 	})();
-	console.debug("Done populating markov4 table");
-	console.log("Done re-training");
+	log.debug("Done populating markov4 table");
+	log.info("Done re-training");
 }

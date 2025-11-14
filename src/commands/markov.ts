@@ -8,6 +8,7 @@ import {
 import { Guilds, Users } from "../consts";
 import { retrainModel } from "../markov";
 import { createMessage, doInTransaction } from "../db";
+import { log } from "../logging";
 
 enum Subcommands {
 	Retrain = "retrain",
@@ -69,7 +70,7 @@ async function retrain(interaction: ChatInputCommandInteraction) {
 }
 
 async function fetchMessages(interaction: ChatInputCommandInteraction) {
-	console.log("Fetching entire message history");
+	log.info("Fetching entire message history");
 	await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 	const guild = await interaction.client.guilds.fetch(Guilds.Egrass);
 	const channels = await guild.channels.fetch();
@@ -88,7 +89,7 @@ async function fetchMessages(interaction: ChatInputCommandInteraction) {
 	};
 	const sendProgressUpdate = async () => {
 		const msg = `⏳ Fetched ${counter.fetched}, inserted ${counter.inserted} messages so far...`;
-		console.debug(msg);
+		log.debug(msg);
 		await interaction.editReply({
 			content: msg,
 		});
@@ -115,9 +116,8 @@ async function fetchMessages(interaction: ChatInputCommandInteraction) {
 			}),
 	);
 	clearInterval(interval);
-	const msg = `✅ Fetched ${counter.fetched}, inserted ${counter.inserted} messages`;
-	console.log(msg);
+	log.info("Finished fetching messages", counter);
 	await interaction.editReply({
-		content: msg,
+		content:  `✅ Fetched ${counter.fetched}, inserted ${counter.inserted} messages`,
 	});
 }

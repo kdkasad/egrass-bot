@@ -24,3 +24,14 @@ export function getDate(daysFromToday: number) {
 	date.setHours(0, 0, 0, 0);
 	return date.getTime() / 1000; // won't be fractional because we set ms to 0
 }
+
+export function wrapError<R>(
+	message: string,
+	fn: () => R,
+): R {
+	try {
+		return fn();
+	} catch (error) {
+		throw new Error(message, { cause: error });
+	}
+}

@@ -11,6 +11,7 @@ import {
 import { Channels, Users } from "../consts";
 import { extractProblemId, formatProblemUrls } from "../utils";
 import { env } from "../env";
+import { log } from "../logging";
 
 export function createJob(client: Client<true>) {
 	if (env.DISABLE_NEETCODE_ANNOUNCEMENTS) return null;
@@ -20,7 +21,7 @@ export function createJob(client: Client<true>) {
 			try {
 				await execute(client);
 			} catch (error) {
-				console.error("Error running announcement job", error);
+				log.error("Error running announcement job", error);
 			}
 		},
 		{ name: "announce" },
@@ -32,7 +33,7 @@ export async function execute(client: Client<true>) {
 
 	// Ensure there are problems for today
 	if (problems.length === 0) {
-		console.warn("No problems found for today");
+		log.warn("No problems found for today");
 		await warnAlexAndKian(client);
 		return;
 	}
@@ -63,7 +64,7 @@ ${formatProblemUrls(problems)}`,
 	// Add to database
 	createAnnouncement(message);
 
-	console.log(`Announcement & threads posted for ${dateString}`);
+	log.info(`Announcement & threads posted`, { today });
 }
 
 async function getNeetcodeChannel(client: Client<true>): Promise<TextChannel> {

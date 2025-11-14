@@ -28,6 +28,7 @@ import {
 } from "../db";
 import { formatProblemUrls, getDate } from "../utils";
 import { execute as triggerAnnounceJob } from "../jobs/announce";
+import { log } from "../logging";
 
 enum Subcommand {
 	Set = "set",
@@ -172,7 +173,7 @@ async function execute(interaction: ChatInputCommandInteraction) {
 		try {
 			await handlers[subcommand](interaction);
 		} catch (error) {
-			console.error(
+			log.error(
 				`Error executing /${interaction.commandName} ${subcommand}`,
 				error,
 			);
@@ -253,7 +254,7 @@ Are you sure you want to overwrite them?`,
 			content: "Failed to set problems.",
 			flags: MessageFlags.Ephemeral,
 		});
-		console.error(`Error setting problems for ${dateString}`, error);
+		log.error(`Error setting problems`, { date }, error);
 	}
 }
 

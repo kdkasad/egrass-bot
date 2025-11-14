@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 import { QuoteCategories } from "../../consts";
 import { recordQuote, UniquenessError } from "../../db";
+import { log } from "../../logging";
 
 export function register(client: Client<true>) {
 	client.on(Events.MessageCreate, (message) => {
@@ -48,12 +49,13 @@ async function handler(message: OmitPartialGroupDMChannel<Message<boolean>>) {
 	if (!quotedMessage) return;
 	try {
 		recordQuote(quotedMessage, category);
-		console.log(
-			`Recorded ${category} quote: ${quotedMessage.content.trim()}`,
-		);
+		log.info(`Recorded quote`, {
+			category,
+			quote: quotedMessage.content.trim(),
+		});
 	} catch (error) {
 		if (error instanceof UniquenessError) {
-			console.warn(error);
+			log.warn(error);
 		} else {
 			throw error;
 		}
@@ -72,13 +74,13 @@ async function getQuoteText(
 	if (message.type === MessageType.Reply) {
 		quotedMessage = await message.fetchReference();
 	} else if (message.type !== MessageType.Default) {
-		console.warn(
+		log.warn(
 			`Found sticker on message of unsupported type ${message.type}`,
 		);
 		return null;
 	}
 	if (!quotedMessage.content.trim()) {
-		console.warn("Candidate message for quote is empty");
+		log.warn("Candidate message for quote is empty");
 		return null;
 	}
 	return quotedMessage;
