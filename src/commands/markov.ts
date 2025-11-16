@@ -6,7 +6,6 @@ import {
 	type GuildTextBasedChannel,
 } from "discord.js";
 import { Guilds, Users } from "../consts";
-import { retrainModel } from "../markov";
 import { createMessage, doInTransaction } from "../db";
 import { log } from "../logging";
 
@@ -63,9 +62,49 @@ async function retrain(interaction: ChatInputCommandInteraction) {
 	await interaction.deferReply({
 		flags: MessageFlags.Ephemeral,
 	});
-	await retrainModel(interaction.client);
+
+	// Create worker to do training so we don't block the event loop
+	log.info("Dispatching worker for Markov retraining");
+	const worker = new Worker("./src/workers/retrain.ts");
+
+	// Send the worker the set of bot users since it doesn't have a Discord client
+	const members = await interaction.guild!.members.fetch();
+	const botUserIds = new Set(
+		members
+			.values()
+			.filter((member) => member.user.bot)
+			.map((member) => member.id),
+	);
+	worker.postMessage(botUserIds);
+
+	// Promise that resolves when the worker exits
+	const workerExited = new Promise<void>((resolve) => {
+		worker.addEventListener("close", () => resolve());
+	});
+
+	// Track the count of messages processed, updated by messages sent from the worker
+	let count = 0;
+	worker.addEventListener("message", (event) => {
+		count = event.data as number;
+	});
+
+	// Send progress updates to the calling user every 2 seconds
+	const interval = setInterval(() => {
+		interaction.editReply({
+			content: `⏳ Processed ${count} messages...`,
+		});
+	}, 2000);
+
+	// Wait until the worker exits
+	await workerExited;
+	log.info("Retraining worker exited");
+
+	// Stop sending progress updates
+	clearInterval(interval);
+
+	// Send final progress update message
 	await interaction.editReply({
-		content: "✅ Model retrained",
+		content: `✅ Model retrained; processed ${count} messages`,
 	});
 }
 
@@ -118,6 +157,6 @@ async function fetchMessages(interaction: ChatInputCommandInteraction) {
 	clearInterval(interval);
 	log.info("Finished fetching messages", counter);
 	await interaction.editReply({
-		content:  `✅ Fetched ${counter.fetched}, inserted ${counter.inserted} messages`,
+		content: `✅ Fetched ${counter.fetched}, inserted ${counter.inserted} messages`,
 	});
 }

@@ -5,6 +5,7 @@ if (Bun.env.NODE_ENV === "production") {
 	log.level = "info";
 } else {
 	log.level = "debug";
+	log.debug("Debug logging enabled");
 }
 
 // Use log4js for uncaught exceptions and promise rejections

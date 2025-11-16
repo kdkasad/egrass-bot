@@ -1,16 +1,11 @@
-import { type Client, type Message } from "discord.js";
+import { type Message } from "discord.js";
 import { Tokenizr } from "tokenizr";
 import {
-	clearMarkovModel,
 	createMarkov4Entry,
 	doInTransaction,
-	getAllMessages,
 	getNextMarkovToken,
-	vacuum,
 	type Markov4Row,
 } from "./db";
-import { Guilds } from "./consts";
-import { log } from "./logging";
 
 enum Tokens {
 	Space = "space",
@@ -103,25 +98,4 @@ export function generateSentence(prompt: string, authorId?: string): string {
 		throw new CannotExtrapolate(prompt);
 	}
 	return tokens.join("");
-}
-
-export async function retrainModel(client: Client<true>) {
-	log.info("Retraining model...");
-
-	// Populate users in cache
-	const guild = await client.guilds.fetch(Guilds.Egrass);
-	await guild.members.fetch();
-
-	log.debug("Populating markov4 table...");
-	doInTransaction(() => {
-		clearMarkovModel();
-		for (const message of getAllMessages()) {
-			const user = client.users.cache.get(message.author_id);
-			if (user?.bot) continue;
-			addMessageToMarkov4(message, message.author_id);
-		}
-		vacuum();
-	})();
-	log.debug("Done populating markov4 table");
-	log.info("Done re-training");
 }
