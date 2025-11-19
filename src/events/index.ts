@@ -3,6 +3,7 @@ import * as solves from "./reactions/solves";
 import * as quotes from "./messages/quotes";
 import * as markovTraining from "./messages/markov-training";
 import * as memberTracking from "./members/track";
+import * as sql from "./messages/sql";
 
 interface Registerable {
 	register(client: Client<true>): void | PromiseLike<void>;
@@ -13,6 +14,7 @@ const consumers: Registerable[] = [
 	quotes,
 	markovTraining,
 	memberTracking,
+	sql,
 ];
 
 export function register(client: Client<true>) {

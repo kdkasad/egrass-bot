@@ -73,6 +73,11 @@ export interface MembersRow {
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
+const rodb = new Database("data.sqlite3", {
+	strict: true,
+	readonly: true,
+	readwrite: false,
+});
 log.info("Created database");
 // db.run("PRAGMA journal_mode = WAL;");
 db.run("PRAGMA foreign_keys = ON");
@@ -731,4 +736,37 @@ export function deleteMember(member: GuildMember | PartialGuildMember) {
 	return db
 		.query<void, [MembersRow["id"]]>(`DELETE FROM members WHERE id = ?`)
 		.run(member.id);
+}
+
+export class TooManyRowsError extends Error {
+	public maxRows: number;
+	constructor(maxRows: number) {
+		super(`Query returned too many (>${maxRows}) rows`);
+		this.name = "TooManyRowsError";
+		this.maxRows = maxRows;
+	}
+}
+
+export function executeReadonlyQuery(
+	sql: string,
+	maxRows: number,
+): Record<string, unknown>[] {
+	// Redefine db so we can't accidentally use it
+	const db = undefined; // eslint-disable-line @typescript-eslint/no-unused-vars
+
+	const query = rodb.prepare<Record<string, unknown>, []>(sql);
+	if (maxRows === -1) {
+		return query.all();
+	} else {
+		// Construct result set one row at a time to avoid storing too many
+		// result rows in memory.
+		const rows: Record<string, unknown>[] = [];
+		let i = 0;
+		for (const row of query.iterate()) {
+			if (i >= maxRows) throw new TooManyRowsError(maxRows);
+			i += 1;
+			rows.push(row);
+		}
+		return rows;
+	}
 }
