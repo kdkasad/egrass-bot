@@ -32,8 +32,9 @@ const client = new Client({
 		GatewayIntentBits.GuildMessages,
 		GatewayIntentBits.GuildMembers,
 		GatewayIntentBits.MessageContent,
+		GatewayIntentBits.DirectMessages,
 	],
-	partials: [Partials.Reaction, Partials.Message],
+	partials: [Partials.Reaction, Partials.Message, Partials.Channel],
 });
 
 // When the client is ready, run this code (only once).

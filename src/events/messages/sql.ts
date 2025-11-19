@@ -17,12 +17,19 @@ export function register(client: Client<true>) {
 async function handleMessage(
 	message: OmitPartialGroupDMChannel<Message<boolean>>,
 ) {
-	// Only handle messages in guild text channels
-	if (!message.inGuild) return;
-	if (!message.channel.isTextBased()) return;
+	// Fetch channel if it is partial
+	let channel = message.channel;
+	if (channel.partial) channel = await channel.fetch();
 
-	// Only consider messages that mention the bot
-	if (!message.mentions.parsedUsers.has(message.client.user.id)) return;
+	// Only consider messages in DMs or which mention the bot
+	if (
+		!(
+			channel.isDMBased() ||
+			message.mentions.parsedUsers.has(message.client.user.id)
+		)
+	) {
+		return;
+	}
 
 	// Extract SQL query from message content
 	const match = message.content.match(/```sql\n(?<query>.*?)\n```/i);
