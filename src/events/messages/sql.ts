@@ -91,10 +91,7 @@ async function handleMessage(
 				allowedMentions: { parse: [] },
 			});
 			if (error.name !== "TimeoutError" && error.name !== "SQLiteError") {
-				log.error(
-					"Error handling SQL request: " + error.message,
-					error,
-				);
+				log.error("Error handling SQL request", error);
 			}
 		}
 	}
@@ -176,18 +173,29 @@ async function executeReadonlyQuery(
 	timeoutMs: number,
 ): Promise<Record<string, unknown>[]> {
 	// Create worker
-	const worker = new Worker("./src/workers/roQuery.ts");
+	const worker = new Worker(
+		new URL("../../workers/roQuery.ts", import.meta.url),
+	);
+	log.debug("SQL worker spawned");
 	// Send query to worker
 	worker.postMessage(sql);
 	const result = await new Promise<QueryWorkerResult>((resolve, reject) => {
 		// Kill worker and reject promise after timeout elapses
 		const timer = setTimeout(() => {
+			log.debug("SQL worker timed out");
 			worker.terminate();
 			reject(new TimeoutError(timeoutMs));
 		}, timeoutMs);
 
+		// Handle early worker exit
+		worker.addEventListener("close", () => {
+			log.debug("SQL worker exited");
+			reject(new Error("Worker exited prematurely"));
+		});
+
 		// Handle worker completion message
 		worker.addEventListener("message", (message) => {
+			log.debug("SQL worker sent result message");
 			clearTimeout(timer);
 			resolve(message.data as QueryWorkerResult);
 		});

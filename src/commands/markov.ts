@@ -65,7 +65,9 @@ async function retrain(interaction: ChatInputCommandInteraction) {
 
 	// Create worker to do training so we don't block the event loop
 	log.info("Dispatching worker for Markov retraining");
-	const worker = new Worker("./src/workers/retrain.ts");
+	const worker = new Worker(
+		new URL("../workers/retrain.ts", import.meta.url),
+	);
 
 	// Send the worker the set of bot users since it doesn't have a Discord client
 	const members = await interaction.guild!.members.fetch();

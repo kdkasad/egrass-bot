@@ -17,13 +17,9 @@ self.addEventListener(
 				status: "success",
 				results,
 			} satisfies QueryWorkerResult);
-		} catch (error_) {
-			let error: Error;
-			if (error_ instanceof Error) {
-				error = error_;
-			} else {
-				error = new Error(String(error_));
-			}
+		} catch (thrown) {
+			const error =
+				thrown instanceof Error ? thrown : new Error(String(thrown));
 			self.postMessage({
 				status: "error",
 				error,
