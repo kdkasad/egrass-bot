@@ -25,13 +25,18 @@ export function getDate(daysFromToday: number) {
 	return date.getTime() / 1000; // won't be fractional because we set ms to 0
 }
 
-export function wrapError<R>(
-	message: string,
-	fn: () => R,
-): R {
+export function wrapError<R>(message: string, fn: () => R): R {
 	try {
 		return fn();
 	} catch (error) {
 		throw new Error(message, { cause: error });
 	}
 }
+
+export type QueryWorkerResult =
+	| {
+			status: "error";
+			error: Error;
+			originalErrorName: string;
+	  }
+	| { status: "success"; results: Record<string, unknown>[] };

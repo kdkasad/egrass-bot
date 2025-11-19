@@ -4,15 +4,15 @@ import {
 	type Message,
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
-import { executeReadonlyQuery, TooManyRowsError } from "../../db";
 import { log } from "../../logging";
-import { SQLiteError } from "bun:sqlite";
 import stringWidth from "string-width";
 import {
 	MAX_MESSAGE_CREATE_REQUEST_SIZE,
 	MAX_MSG_CONTENT_LENGTH,
 } from "../../consts";
+import { type QueryWorkerResult } from "../../utils";
 
+const QUERY_TIMEOUT_MS = 2000;
 const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
 
 export function register(client: Client<true>) {
@@ -53,7 +53,7 @@ async function handleMessage(
 	});
 
 	try {
-		const results = executeReadonlyQuery(query);
+		const results = await executeReadonlyQuery(query, QUERY_TIMEOUT_MS);
 		if (results.length === 0) {
 			await message.reply({
 				content: `Query returned 0 rows`,
@@ -86,21 +86,15 @@ async function handleMessage(
 		}
 	} catch (error) {
 		if (error instanceof Error) {
-			let content = `⚠️ Error: ${error.message}`;
-			if (error instanceof TooManyRowsError) {
-				content += "\nConsider adding a `LIMIT` clause to the query.";
-			}
 			await message.reply({
-				content,
+				content: `⚠️ Error: ${error.message}`,
 				allowedMentions: { parse: [] },
 			});
-			if (
-				!(
-					error instanceof TooManyRowsError ||
-					error instanceof SQLiteError
-				)
-			) {
-				log.error(error.message, error);
+			if (error.name !== "TimeoutError" && error.name !== "SQLiteError") {
+				log.error(
+					"Error handling SQL request: " + error.message,
+					error,
+				);
 			}
 		}
 	}
@@ -168,4 +162,43 @@ function resultsAsBoxDrawingTable(rows: Record<string, unknown>[]): string {
 	];
 
 	return output.join("\n");
+}
+
+class TimeoutError extends Error {
+	constructor(ms: number) {
+		super(`Timed out (exceeded ${ms} ms)`);
+		this.name = "TimeoutError";
+	}
+}
+
+async function executeReadonlyQuery(
+	sql: string,
+	timeoutMs: number,
+): Promise<Record<string, unknown>[]> {
+	// Create worker
+	const worker = new Worker("./src/workers/roQuery.ts");
+	// Send query to worker
+	worker.postMessage(sql);
+	const result = await new Promise<QueryWorkerResult>((resolve, reject) => {
+		// Kill worker and reject promise after timeout elapses
+		const timer = setTimeout(() => {
+			worker.terminate();
+			reject(new TimeoutError(timeoutMs));
+		}, timeoutMs);
+
+		// Handle worker completion message
+		worker.addEventListener("message", (message) => {
+			clearTimeout(timer);
+			resolve(message.data as QueryWorkerResult);
+		});
+	});
+	if (result.status === "success") {
+		return result.results;
+	} else {
+		// Restore original error name, since structured clone algorithm resets
+		// the name of non-builtin errors
+		const error = result.error;
+		error.name = result.originalErrorName;
+		throw error;
+	}
 }

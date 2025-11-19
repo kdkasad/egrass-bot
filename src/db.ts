@@ -86,7 +86,7 @@ export interface MembersRow {
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
-const rodb = new Database("data.sqlite3", {
+export const rodb = new Database("data.sqlite3", {
 	strict: true,
 	readonly: true,
 	readwrite: false,
@@ -756,17 +756,4 @@ export function deleteMember(member: GuildMember | PartialGuildMember) {
 	return db
 		.query<void, [MembersRow["id"]]>(`DELETE FROM members WHERE id = ?`)
 		.run(member.id);
-}
-
-export class TooManyRowsError extends Error {
-	public maxRows: number;
-	constructor(maxRows: number) {
-		super(`Query returned too many (>${maxRows}) rows`);
-		this.name = "TooManyRowsError";
-		this.maxRows = maxRows;
-	}
-}
-
-export function executeReadonlyQuery(sql: string): Record<string, unknown>[] {
-	return rodb.prepare<Record<string, unknown>, []>(sql).all();
 }
