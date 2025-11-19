@@ -12,7 +12,7 @@ import {
 } from "../../consts";
 import { type QueryWorkerResult } from "../../utils";
 
-const QUERY_TIMEOUT_MS = 2000;
+const QUERY_TIMEOUT_MS = 5000;
 const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
 
 export function register(client: Client<true>) {
