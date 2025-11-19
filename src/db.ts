@@ -1,8 +1,10 @@
 import { Database, SQLiteError } from "bun:sqlite";
 import { getDate } from "./utils";
 import {
+	GuildMember,
 	messageLink,
 	type Message,
+	type PartialGuildMember,
 	type PartialMessage,
 	type PartialUser,
 	type User,
@@ -62,6 +64,12 @@ export interface Markov4Row {
 	word3: string | null;
 	word4: string | null;
 	word5: string | null;
+}
+
+export interface MembersRow {
+	id: string;
+	displayName: string;
+	username: string;
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
@@ -182,6 +190,17 @@ if (version < 5) {
 		db.run(`UPDATE schema_version SET version = 5`);
 	})();
 	log.debug("Applied migration 5");
+}
+if (version < 6) {
+	db.transaction(() => {
+		db.run(`CREATE TABLE members (
+			id TEXT PRIMARY KEY,
+			displayName TEXT NOT NULL,
+			username TEXT NOT NULL
+		) STRICT`);
+		db.run(`UPDATE schema_version SET version = 6`);
+	})();
+	log.debug("Applied migration 6");
 }
 log.info("Database initialization complete");
 
@@ -693,4 +712,23 @@ export function clearMarkovModel() {
 
 export function vacuum() {
 	return db.query(`VACUUM`).run();
+}
+
+export function addOrUpdateMember(member: GuildMember) {
+	return db
+		.query<
+			void,
+			[
+				MembersRow["id"],
+				MembersRow["displayName"],
+				MembersRow["username"],
+			]
+		>(`INSERT OR REPLACE INTO members (id, displayName, username) VALUES (?, ?, ?)`)
+		.run(member.id, member.displayName, member.user.username);
+}
+
+export function deleteMember(member: GuildMember | PartialGuildMember) {
+	return db
+		.query<void, [MembersRow["id"]]>(`DELETE FROM members WHERE id = ?`)
+		.run(member.id);
 }
