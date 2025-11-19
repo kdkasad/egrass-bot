@@ -18,6 +18,9 @@ export function register(client: Client<true>) {
 async function handleMessage(
 	message: OmitPartialGroupDMChannel<Message<boolean>>,
 ) {
+	// Skip our own messages
+	if (message.author.id == message.client.user.id) return;
+
 	// Fetch channel if it is partial
 	let channel = message.channel;
 	if (channel.partial) channel = await channel.fetch();
