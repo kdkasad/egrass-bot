@@ -36,7 +36,7 @@ async function handleMessage(
 	}
 
 	// Extract SQL query from message content
-	const match = message.content.match(/```sql\n(?<query>.*?)\n```/i);
+	const match = message.content.match(/```sql\n(?<query>.*?)\n```/is);
 	if (!match || !match.groups) {
 		// Message doesn't contain a SQL code block
 		return;
