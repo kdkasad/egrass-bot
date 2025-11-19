@@ -27,6 +27,7 @@
 		"discord.js": "^14.22.1",
 		"log4js": "^6.9.1",
 		"node-cron": "^4.2.1",
+		"string-width": "^8.1.0",
 		"tokenizr": "^2.1.0",
 		"zod": "^4.1.11"
 	}

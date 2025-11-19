@@ -6,6 +6,7 @@ import {
 import { executeReadonlyQuery, TooManyRowsError } from "../../db";
 import { log } from "../../logging";
 import { SQLiteError } from "bun:sqlite";
+import stringWidth from "string-width";
 
 const MAX_ROWS = 100;
 
@@ -85,10 +86,10 @@ function resultsAsBoxDrawingTable(rows: Record<string, unknown>[]): string {
 	// 2. Calculate column widths based on max length of header vs data
 	const widths = headers.map((header) => {
 		const maxDataLength = Math.max(
-			...rows.map((row) => String(row[header] ?? "").length),
+			...rows.map((row) => stringWidth(String(row[header] ?? ""))),
 		);
 		// Add 2 for padding (one space on each side)
-		return Math.max(header.length, maxDataLength) + 2;
+		return Math.max(stringWidth(header), maxDataLength) + 2;
 	});
 
 	// Helper to create row lines
@@ -101,14 +102,14 @@ function resultsAsBoxDrawingTable(rows: Record<string, unknown>[]): string {
 
 	// Helper to center text (for headers)
 	const center = (text: string, width: number) => {
-		const space = width - text.length;
+		const space = width - stringWidth(text);
 		const left = Math.floor(space / 2);
 		return " ".repeat(left) + text + " ".repeat(space - left);
 	};
 
 	// Helper to pad text (for data - usually left aligned in SQLite)
 	const pad = (text: string, width: number) => {
-		return " " + text.padEnd(width - 1);
+		return " " + text + " ".repeat(width - stringWidth(text) - 1);
 	};
 
 	// Define Box Characters
