@@ -7,6 +7,7 @@ import { executeReadonlyQuery, TooManyRowsError } from "../../db";
 import { log } from "../../logging";
 import { SQLiteError } from "bun:sqlite";
 import stringWidth from "string-width";
+import { MAX_MSG_CONTENT_LENGTH } from "../../consts";
 
 const MAX_ROWS = 100;
 
@@ -52,10 +53,18 @@ async function handleMessage(
 				allowedMentions: { parse: [] },
 			});
 		} else {
-			await message.reply({
-				content: resultsAsMarkdown(results),
-				allowedMentions: { parse: [] },
-			});
+			const content = resultsAsMarkdown(results);
+			if (content.length > MAX_MSG_CONTENT_LENGTH) {
+				await message.reply({
+					content: `Resulting table is too long to fit in one Discord message (limit is ${MAX_MSG_CONTENT_LENGTH} chars, have ${content.length})`,
+					allowedMentions: { parse: [] },
+				});
+			} else {
+				await message.reply({
+					content: resultsAsMarkdown(results),
+					allowedMentions: { parse: [] },
+				});
+			}
 		}
 	} catch (error) {
 		if (error instanceof Error) {
