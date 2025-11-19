@@ -1,4 +1,5 @@
 import {
+	AttachmentBuilder,
 	type Client,
 	type Message,
 	type OmitPartialGroupDMChannel,
@@ -7,9 +8,12 @@ import { executeReadonlyQuery, TooManyRowsError } from "../../db";
 import { log } from "../../logging";
 import { SQLiteError } from "bun:sqlite";
 import stringWidth from "string-width";
-import { MAX_MSG_CONTENT_LENGTH } from "../../consts";
+import {
+	MAX_MESSAGE_CREATE_REQUEST_SIZE,
+	MAX_MSG_CONTENT_LENGTH,
+} from "../../consts";
 
-const MAX_ROWS = 100;
+const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
 
 export function register(client: Client<true>) {
 	client.on("messageCreate", handleMessage);
@@ -49,22 +53,33 @@ async function handleMessage(
 	});
 
 	try {
-		const results = executeReadonlyQuery(query, MAX_ROWS);
+		const results = executeReadonlyQuery(query);
 		if (results.length === 0) {
 			await message.reply({
 				content: `Query returned 0 rows`,
 				allowedMentions: { parse: [] },
 			});
 		} else {
-			const content = resultsAsMarkdown(results);
-			if (content.length > MAX_MSG_CONTENT_LENGTH) {
+			const table = resultsAsBoxDrawingTable(results);
+			const markdown = "```\n" + table + "\n```";
+			if (table.length > MAX_ATTACHMENT_SIZE) {
 				await message.reply({
-					content: `Resulting table is too long to fit in one Discord message (limit is ${MAX_MSG_CONTENT_LENGTH} chars, have ${content.length})`,
+					content: `⚠️ Results exceed maximum attachment size (${table.length}>${MAX_ATTACHMENT_SIZE})`,
+					allowedMentions: { parse: [] },
+				});
+			} else if (markdown.length > MAX_MSG_CONTENT_LENGTH) {
+				await message.reply({
+					content: `ℹ️ Results exceed maximum message content length (${markdown.length}>${MAX_MSG_CONTENT_LENGTH}); using attachment`,
+					files: [
+						new AttachmentBuilder(Buffer.from(table), {
+							name: "results.txt",
+						}),
+					],
 					allowedMentions: { parse: [] },
 				});
 			} else {
 				await message.reply({
-					content: resultsAsMarkdown(results),
+					content: markdown,
 					allowedMentions: { parse: [] },
 				});
 			}
@@ -89,10 +104,6 @@ async function handleMessage(
 			}
 		}
 	}
-}
-
-function resultsAsMarkdown(results: Record<string, unknown>[]): string {
-	return "```\n" + resultsAsBoxDrawingTable(results) + "\n```";
 }
 
 // TODO: handle cells with line breaks

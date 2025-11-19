@@ -12,6 +12,19 @@ import {
 import type { QuoteCategories } from "./consts";
 import { log } from "./logging";
 
+export const TABLES = [
+	"problems",
+	"solves",
+	"announcements",
+	"schema_version",
+	"quotes",
+	"messages",
+	"markov4",
+	"members",
+] as const;
+
+export type Table = (typeof TABLES)[number];
+
 export interface ProblemPair {
 	url1: string;
 	url2: string;
@@ -754,26 +767,6 @@ export class TooManyRowsError extends Error {
 	}
 }
 
-export function executeReadonlyQuery(
-	sql: string,
-	maxRows: number,
-): Record<string, unknown>[] {
-	// Redefine db so we can't accidentally use it
-	const db = undefined; // eslint-disable-line @typescript-eslint/no-unused-vars
-
-	const query = rodb.prepare<Record<string, unknown>, []>(sql);
-	if (maxRows === -1) {
-		return query.all();
-	} else {
-		// Construct result set one row at a time to avoid storing too many
-		// result rows in memory.
-		const rows: Record<string, unknown>[] = [];
-		let i = 0;
-		for (const row of query.iterate()) {
-			if (i >= maxRows) throw new TooManyRowsError(maxRows);
-			i += 1;
-			rows.push(row);
-		}
-		return rows;
-	}
+export function executeReadonlyQuery(sql: string): Record<string, unknown>[] {
+	return rodb.prepare<Record<string, unknown>, []>(sql).all();
 }

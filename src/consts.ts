@@ -20,3 +20,5 @@ export enum Guilds {
 
 /** Maximum length of a Discord message's content */
 export const MAX_MSG_CONTENT_LENGTH = 2000;
+/** Maximum length in bytes of a message creation API request */
+export const MAX_MESSAGE_CREATE_REQUEST_SIZE = 26214400; // 25 MiB
