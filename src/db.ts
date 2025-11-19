@@ -68,7 +68,7 @@ export interface Markov4Row {
 
 export interface MembersRow {
 	id: string;
-	displayName: string;
+	display_name: string;
 	username: string;
 }
 
@@ -206,6 +206,13 @@ if (version < 6) {
 		db.run(`UPDATE schema_version SET version = 6`);
 	})();
 	log.debug("Applied migration 6");
+}
+if (version < 7) {
+	db.transaction(() => {
+		db.run(`ALTER TABLE members RENAME COLUMN displayName TO display_name`);
+		db.run(`UPDATE schema_version SET version = 7`);
+	})();
+	log.debug("Applied migration 7");
 }
 log.info("Database initialization complete");
 
@@ -725,10 +732,10 @@ export function addOrUpdateMember(member: GuildMember) {
 			void,
 			[
 				MembersRow["id"],
-				MembersRow["displayName"],
+				MembersRow["display_name"],
 				MembersRow["username"],
 			]
-		>(`INSERT OR REPLACE INTO members (id, displayName, username) VALUES (?, ?, ?)`)
+		>(`INSERT OR REPLACE INTO members (id, display_name, username) VALUES (?, ?, ?)`)
 		.run(member.id, member.displayName, member.user.username);
 }
 
