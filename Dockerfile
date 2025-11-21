@@ -6,6 +6,7 @@ COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile --production
 
 # Copy sources
+COPY assets ./assets
 COPY src ./src
 
 ENV NODE_ENV=production

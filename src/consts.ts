@@ -1,6 +1,7 @@
 export enum Users {
 	Alex = "526907259872083988",
 	Kian = "753840846549418024",
+	Atharva = "1007790710042394624",
 }
 
 export enum Channels {
