@@ -85,6 +85,11 @@ export interface MembersRow {
 	username: string;
 }
 
+export interface SqlResponsesRow {
+	query_id: string;
+	response_id: string;
+}
+
 const db = new Database("data.sqlite3", { strict: true, create: true });
 export const rodb = new Database("data.sqlite3", {
 	strict: true,
@@ -226,6 +231,16 @@ if (version < 7) {
 		db.run(`UPDATE schema_version SET version = 7`);
 	})();
 	log.debug("Applied migration 7");
+}
+if (version < 8) {
+	db.transaction(() => {
+		db.run(`CREATE TABLE sql_responses (
+			query_id TEXT PRIMARY KEY,
+			response_id TEXT UNIQUE NOT NULL
+		) STRICT`);
+		db.run(`UPDATE schema_version SET version = 8`);
+	})();
+	log.debug("Applied migration 8");
 }
 log.info("Database initialization complete");
 
@@ -756,4 +771,29 @@ export function deleteMember(member: GuildMember | PartialGuildMember) {
 	return db
 		.query<void, [MembersRow["id"]]>(`DELETE FROM members WHERE id = ?`)
 		.run(member.id);
+}
+
+export function recordSqlResponse(
+	queryMessage: Message,
+	responseMessage: Message,
+) {
+	return db
+		.query<
+			null,
+			[string, string]
+		>(`INSERT INTO sql_responses (query_id, response_id) VALUES (?, ?)`)
+		.run(queryMessage.id, responseMessage.id);
+}
+
+/**
+ * Returns the message ID of the response sent to the SQL query message with the given ID,
+ * or null if the given ID doesn't corresond to a SQL query.
+ */
+export function getResponseToSqlQuery(queryMessageId: string): string | null {
+	return db
+		.query<
+			Pick<SqlResponsesRow, "response_id">,
+			[SqlResponsesRow["query_id"]]
+		>(`select response_id from sql_responses where query_id = ?`)
+		.get(queryMessageId)?.response_id ?? null;
 }

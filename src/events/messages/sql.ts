@@ -2,7 +2,10 @@ import {
 	AttachmentBuilder,
 	type Client,
 	type Message,
+	type MessageEditOptions,
+	type MessageReplyOptions,
 	type OmitPartialGroupDMChannel,
+	type PartialMessage,
 } from "discord.js";
 import { log } from "../../logging";
 import stringWidth from "string-width";
@@ -11,19 +14,25 @@ import {
 	MAX_MSG_CONTENT_LENGTH,
 } from "../../consts";
 import { type QueryWorkerResult } from "../../utils";
+import { getResponseToSqlQuery, recordSqlResponse } from "../../db";
 
 const QUERY_TIMEOUT_MS = 5000;
 const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
 
 export function register(client: Client<true>) {
-	client.on("messageCreate", handleMessage);
+	client.on("messageCreate", handleNewMessage);
+	client.on("messageUpdate", handleMessgeEdited);
 }
 
-async function handleMessage(
-	message: OmitPartialGroupDMChannel<Message<boolean>>,
-) {
+/**
+ * Returns true if the given message should be checked for a SQL query,
+ * or false if it should be ignored.
+ */
+async function messageIsSqlCandidate(
+	message: Message<boolean>,
+): Promise<boolean> {
 	// Skip our own messages
-	if (message.author.id == message.client.user.id) return;
+	if (message.author.id == message.client.user.id) return false;
 
 	// Fetch channel if it is partial
 	let channel = message.channel;
@@ -36,17 +45,43 @@ async function handleMessage(
 			message.mentions.parsedUsers.has(message.client.user.id)
 		)
 	) {
-		return;
+		return false;
 	}
 
-	// Extract SQL query from message content
+	return true;
+}
+
+/** Returns the SQL query from the message, or null if it does not contain one */
+function getQueryFromMessage(message: Message<boolean>): string | null {
 	const match = message.content.match(/```sql\n(?<query>.*?)\n```/is);
 	if (!match || !match.groups) {
 		// Message doesn't contain a SQL code block
+		return null;
+	}
+	return match.groups.query;
+}
+
+async function handleNewMessage(
+	message: OmitPartialGroupDMChannel<Message<boolean>>,
+) {
+	if (!(await messageIsSqlCandidate(message))) return;
+
+	const query = getQueryFromMessage(message);
+	if (!query) {
+		// Message doesn't contain a SQL code block
 		return;
 	}
-	const query = match.groups.query;
 
+	const responsePayload = await runQueryAndPrepareResponse(query, message);
+	const reply = await message.reply(responsePayload);
+	recordSqlResponse(message, reply);
+}
+
+/** Runs the given SQL query, returning the payload for the response message. */
+async function runQueryAndPrepareResponse(
+	query: string,
+	message: Message,
+): Promise<MessageReplyOptions & MessageEditOptions> {
 	log.info("SQL query requested", {
 		query,
 		user: message.author.displayName,
@@ -54,45 +89,50 @@ async function handleMessage(
 
 	try {
 		const results = await executeReadonlyQuery(query, QUERY_TIMEOUT_MS);
+		let replyPayload: MessageReplyOptions & MessageEditOptions;
 		if (results.length === 0) {
-			await message.reply({
-				content: `Query returned 0 rows`,
-				allowedMentions: { parse: [] },
-			});
+			replyPayload = { content: `Query returned 0 rows` };
 		} else {
 			const table = resultsAsBoxDrawingTable(results);
 			const markdown = "```\n" + table + "\n```";
 			if (table.length > MAX_ATTACHMENT_SIZE) {
-				await message.reply({
+				replyPayload = {
 					content: `⚠️ Results exceed maximum attachment size (${table.length}>${MAX_ATTACHMENT_SIZE})`,
-					allowedMentions: { parse: [] },
-				});
+				};
 			} else if (markdown.length > MAX_MSG_CONTENT_LENGTH) {
-				await message.reply({
+				replyPayload = {
 					content: `ℹ️ Results exceed maximum message content length (${markdown.length}>${MAX_MSG_CONTENT_LENGTH}); using attachment`,
 					files: [
 						new AttachmentBuilder(Buffer.from(table), {
 							name: "results.txt",
 						}),
 					],
-					allowedMentions: { parse: [] },
-				});
+				};
 			} else {
-				await message.reply({
-					content: markdown,
-					allowedMentions: { parse: [] },
-				});
+				replyPayload = { content: markdown };
 			}
 		}
+		return {
+			...replyPayload,
+			allowedMentions: { parse: [] },
+		};
 	} catch (error) {
 		if (error instanceof Error) {
-			await message.reply({
-				content: `⚠️ Error: ${error.message}`,
-				allowedMentions: { parse: [] },
-			});
 			if (error.name !== "TimeoutError" && error.name !== "SQLiteError") {
 				log.error("Error handling SQL request", error);
+			} else if (error.name === "TimeoutError") {
+				log.warn("SQL request timed out", {
+					query,
+					author: message.author.displayName,
+					timeoutMs: QUERY_TIMEOUT_MS,
+				});
 			}
+			return {
+				content: `⚠️ Error: ${error.message}`,
+				allowedMentions: { parse: [] },
+			};
+		} else {
+			throw new Error("unexpected error", { cause: error });
 		}
 	}
 }
@@ -208,5 +248,79 @@ async function executeReadonlyQuery(
 		const error = result.error;
 		error.name = result.originalErrorName;
 		throw error;
+	}
+}
+
+async function handleMessgeEdited(
+	oldMessage: OmitPartialGroupDMChannel<Message> | PartialMessage,
+	newMessage: OmitPartialGroupDMChannel<Message>,
+) {
+	// If new message no longer meets the criteria, skip it
+	if (!(await messageIsSqlCandidate(newMessage))) return;
+
+	// If the old message was not a SQL query that we responded to, treat it as a new message
+	const originalResponseId = getResponseToSqlQuery(oldMessage.id);
+	if (!originalResponseId) {
+		return handleNewMessage(newMessage);
+	}
+
+	// Fetch the original message so we can check its query
+	if (oldMessage.partial) {
+		oldMessage = await oldMessage.fetch();
+	}
+
+	// Get queries from old and new messages
+	const oldQuery = getQueryFromMessage(oldMessage);
+	const newQuery = getQueryFromMessage(newMessage);
+
+	// If the new message doesn't contain a query, there's nothing to do
+	if (!newQuery) return;
+
+	// If the query hasn't changed, we don't need to do anything
+	if (oldQuery === newQuery) return;
+
+	// Get the original response message so we can edit it
+	let originalResponse: Message;
+	try {
+		originalResponse =
+			await newMessage.channel.messages.fetch(originalResponseId);
+	} catch (error) {
+		// If we couldn't fetch the original response, reply to the new message with an error message
+		if (error instanceof Error) {
+			log.error("Error fetching original response to update", error);
+			await newMessage.reply({
+				content: `⚠️ Error fetching original response to update`,
+				allowedMentions: { parse: [] },
+			});
+			return;
+		} else {
+			throw new Error("unexpected error", { cause: error });
+		}
+	}
+
+	// Run the query
+	const responsePayload = await runQueryAndPrepareResponse(
+		newQuery,
+		newMessage,
+	);
+
+	// Edit original response with new results
+	try {
+		await originalResponse.edit({
+			attachments: [],
+			...responsePayload,
+		});
+	} catch (error) {
+		// If we couldn't edit the response, reply to the new message with an error message
+		if (error instanceof Error) {
+			log.error("Error editing original response", error);
+			await newMessage.reply({
+				content: `⚠️ Error editing original response`,
+				allowedMentions: { parse: [] },
+			});
+			return;
+		} else {
+			throw new Error("unexpected error", { cause: error });
+		}
 	}
 }
