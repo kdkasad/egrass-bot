@@ -8,7 +8,7 @@ import {
 import { Users } from "../../consts";
 import yumImage from "../../../assets/yum.gif" with { type: "file" };
 
-const yumImageBuf = Buffer.from(
+export const yumImageBuf = Buffer.from(
 	await Bun.file(yumImage, {
 		type: "image/gif",
 	}).arrayBuffer(),

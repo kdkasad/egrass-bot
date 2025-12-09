@@ -1,4 +1,5 @@
 import {
+	AttachmentBuilder,
 	ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -11,9 +12,12 @@ import {
 import { log } from "../logging";
 import { env } from "../env";
 import { Rcon } from "rcon-client";
+import { Users } from "../consts";
+import { yumImageBuf } from "../events/messages/atharva-dms";
 
 enum Subcommands {
 	Whitelist = "whitelist",
+	Run = "run",
 }
 
 export const data = new SlashCommandBuilder()
@@ -29,6 +33,25 @@ export const data = new SlashCommandBuilder()
 					.setDescription("Your Minecraft username")
 					.setRequired(true),
 			),
+	)
+	.addSubcommand((sub) =>
+		sub
+			.setName(Subcommands.Run)
+			.setDescription("Run a command on the server")
+			.addStringOption((option) =>
+				option
+					.setName("command")
+					.setDescription("Command to run")
+					.setRequired(true),
+			)
+			.addBooleanOption((option) =>
+				option
+					.setName("private")
+					.setDescription(
+						"If true, response will not be sent in channel",
+					)
+					.setRequired(false),
+			),
 	);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -37,6 +60,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		switch (subcommand) {
 			case Subcommands.Whitelist:
 				await whitelist(interaction);
+				break;
+			case Subcommands.Run:
+				await runCommand(interaction);
 				break;
 		}
 	} catch (error) {
@@ -126,4 +152,35 @@ async function runMinecraftCommand(
 			`Unexpected response from server; command probably failed: ${response}`,
 		);
 	}
+	return response;
+}
+
+async function runCommand(interaction: ChatInputCommandInteraction) {
+	// Permission check
+	if (interaction.user.id !== Users.Kian) {
+		await interaction.reply({
+			files: [
+				new AttachmentBuilder(Buffer.from(yumImageBuf), {
+					name: "yum.gif",
+				}),
+			],
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	const privateResponse = interaction.options.getBoolean("private") ?? false;
+	const command = interaction.options.getString("command", true).trim();
+
+	if (!command) {
+		throw new Error("Empty command");
+	}
+	const response = await runMinecraftCommand(command, /.*?/);
+	await interaction.reply({
+		content: response,
+		flags: privateResponse
+			? [MessageFlags.SuppressEmbeds, MessageFlags.Ephemeral]
+			: [MessageFlags.SuppressEmbeds],
+		allowedMentions: { parse: [] },
+	});
 }
