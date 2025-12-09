@@ -90,6 +90,11 @@ export interface SqlResponsesRow {
 	response_id: string;
 }
 
+export interface MinecraftRow {
+	discord_id: string;
+	mc_username: string;
+}
+
 const db = new Database("data.sqlite3", { strict: true, create: true });
 export const rodb = new Database("data.sqlite3", {
 	strict: true,
@@ -241,6 +246,17 @@ if (version < 8) {
 		db.run(`UPDATE schema_version SET version = 8`);
 	})();
 	log.debug("Applied migration 8");
+}
+if (version < 9) {
+	db.transaction(() => {
+		db.run(`CREATE TABLE minecraft (
+			discord_id TEXT PRIMARY KEY,
+			mc_username TEXT UNIQUE NOT NULL,
+			FOREIGN KEY (discord_id) REFERENCES members(id)
+		) STRICT`);
+		db.run(`UPDATE schema_version SET version = 9`);
+	})();
+	log.debug("Applied migration 9");
 }
 log.info("Database initialization complete");
 
@@ -790,10 +806,50 @@ export function recordSqlResponse(
  * or null if the given ID doesn't corresond to a SQL query.
  */
 export function getResponseToSqlQuery(queryMessageId: string): string | null {
+	return (
+		db
+			.query<
+				Pick<SqlResponsesRow, "response_id">,
+				[SqlResponsesRow["query_id"]]
+			>(`select response_id from sql_responses where query_id = ?`)
+			.get(queryMessageId)?.response_id ?? null
+	);
+}
+
+/**
+ * Sets the Minecraft username for the given user.
+ */
+export function setMinecraftUsername(user: User, mcUsername: string) {
 	return db
 		.query<
-			Pick<SqlResponsesRow, "response_id">,
-			[SqlResponsesRow["query_id"]]
-		>(`select response_id from sql_responses where query_id = ?`)
-		.get(queryMessageId)?.response_id ?? null;
+			null,
+			[MinecraftRow["discord_id"], MinecraftRow["mc_username"]]
+		>(`INSERT OR REPLACE INTO minecraft (discord_id, mc_username) VALUES (?, ?)`)
+		.run(user.id, mcUsername);
+}
+
+/**
+ * Gets the Minecraft username for the given user.
+ */
+export function getMinecraftUsername(user: User): string | null {
+	return (
+		db
+			.query<
+				Pick<MinecraftRow, "mc_username">,
+				[MinecraftRow["discord_id"]]
+			>(`SELECT mc_username FROM minecraft WHERE discord_id = ?`)
+			.get(user.id)?.mc_username ?? null
+	);
+}
+
+/**
+ * Clears the Minecraft username for the given user.
+ */
+export function clearMinecraftUsername(user: User) {
+	return db
+		.query<
+			null,
+			[MinecraftRow["discord_id"]]
+		>(`DELETE FROM minecraft WHERE discord_id = ?`)
+		.run(user.id);
 }
