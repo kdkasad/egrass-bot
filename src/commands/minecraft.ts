@@ -164,7 +164,6 @@ async function runCommand(interaction: ChatInputCommandInteraction) {
 					name: "yum.gif",
 				}),
 			],
-			flags: MessageFlags.Ephemeral,
 		});
 		return;
 	}
