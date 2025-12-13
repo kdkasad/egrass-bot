@@ -8,7 +8,6 @@ import {
 	type PartialMessage,
 } from "discord.js";
 import { log } from "../../logging";
-import stringWidth from "string-width";
 import {
 	MAX_MESSAGE_CREATE_REQUEST_SIZE,
 	MAX_MSG_CONTENT_LENGTH,
@@ -88,12 +87,11 @@ async function runQueryAndPrepareResponse(
 	});
 
 	try {
-		const results = await executeReadonlyQuery(query, QUERY_TIMEOUT_MS);
+		const table = await executeReadonlyQuery(query, QUERY_TIMEOUT_MS);
 		let replyPayload: MessageReplyOptions & MessageEditOptions;
-		if (results.length === 0) {
+		if (table === null) {
 			replyPayload = { content: `Query returned 0 rows` };
 		} else {
-			const table = resultsAsBoxDrawingTable(results);
 			const markdown = "```\n" + table + "\n```";
 			if (table.length > MAX_ATTACHMENT_SIZE) {
 				replyPayload = {
@@ -137,70 +135,6 @@ async function runQueryAndPrepareResponse(
 	}
 }
 
-// TODO: handle cells with line breaks
-function resultsAsBoxDrawingTable(rows: Record<string, unknown>[]): string {
-	if (rows.length === 0) throw new Error("Must contain at least one row");
-
-	// 1. Get column headers
-	const headers = Object.keys(rows[0]);
-
-	// 2. Calculate column widths based on max length of header vs data
-	const widths = headers.map((header) => {
-		const maxDataLength = Math.max(
-			...rows.map((row) => stringWidth(String(row[header] ?? ""))),
-		);
-		// Add 2 for padding (one space on each side)
-		return Math.max(stringWidth(header), maxDataLength) + 2;
-	});
-
-	// Helper to create row lines
-	const buildLine = (
-		left: string,
-		mid: string,
-		right: string,
-		fill: string,
-	) => left + widths.map((w) => fill.repeat(w)).join(mid) + right;
-
-	// Helper to center text (for headers)
-	const center = (text: string, width: number) => {
-		const space = width - stringWidth(text);
-		const left = Math.floor(space / 2);
-		return " ".repeat(left) + text + " ".repeat(space - left);
-	};
-
-	// Helper to pad text (for data - usually left aligned in SQLite)
-	const pad = (text: string, width: number) => {
-		return " " + text + " ".repeat(width - stringWidth(text) - 1);
-	};
-
-	// Define Box Characters
-	const lines = {
-		top: buildLine("┌", "┬", "┐", "─"),
-		mid: buildLine("├", "┼", "┤", "─"),
-		bottom: buildLine("└", "┴", "┘", "─"),
-	};
-
-	// Build the Table
-	const output = [
-		lines.top,
-		// Headers (Centered)
-		"│" + headers.map((h, i) => center(h, widths[i])).join("│") + "│",
-		lines.mid,
-		// Data Rows (Left aligned with 1 space padding)
-		...rows.map(
-			(row) =>
-				"│" +
-				headers
-					.map((h, i) => pad(String(row[h] ?? ""), widths[i]))
-					.join("│") +
-				"│",
-		),
-		lines.bottom,
-	];
-
-	return output.join("\n");
-}
-
 class TimeoutError extends Error {
 	constructor(ms: number) {
 		super(`Timed out (exceeded ${ms} ms)`);
@@ -211,7 +145,7 @@ class TimeoutError extends Error {
 async function executeReadonlyQuery(
 	sql: string,
 	timeoutMs: number,
-): Promise<Record<string, unknown>[]> {
+): Promise<string | null> {
 	// Create worker
 	const worker = new Worker(
 		new URL("../../workers/roQuery.ts", import.meta.url),
@@ -241,7 +175,7 @@ async function executeReadonlyQuery(
 		});
 	});
 	if (result.status === "success") {
-		return result.results;
+		return result.table;
 	} else {
 		// Restore original error name, since structured clone algorithm resets
 		// the name of non-builtin errors

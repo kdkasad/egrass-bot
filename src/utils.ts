@@ -39,4 +39,7 @@ export type QueryWorkerResult =
 			error: Error;
 			originalErrorName: string;
 	  }
-	| { status: "success"; results: Record<string, unknown>[] };
+	| {
+			status: "success";
+			table: string | null;
+	  };
