@@ -5,6 +5,7 @@ import * as markovTraining from "./messages/markov-training";
 import * as memberTracking from "./members/track";
 import * as sql from "./messages/sql";
 import * as atharvaDms from "./messages/atharva-dms";
+import * as recap from "./interactions/recap";
 
 interface Registerable {
 	register(client: Client<true>): void | PromiseLike<void>;
@@ -17,6 +18,7 @@ const consumers: Registerable[] = [
 	memberTracking,
 	sql,
 	atharvaDms,
+	recap,
 ];
 
 export function register(client: Client<true>) {

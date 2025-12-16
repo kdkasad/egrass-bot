@@ -9,7 +9,7 @@ import {
 	type PartialUser,
 	type User,
 } from "discord.js";
-import type { QuoteCategories } from "./consts";
+import { Channels, type QuoteCategories } from "./consts";
 import { log } from "./logging";
 
 export const TABLES = [
@@ -803,7 +803,7 @@ export function recordSqlResponse(
 
 /**
  * Returns the message ID of the response sent to the SQL query message with the given ID,
- * or null if the given ID doesn't corresond to a SQL query.
+ * or null if the given ID doesn't correspond to a SQL query.
  */
 export function getResponseToSqlQuery(queryMessageId: string): string | null {
 	return (
@@ -852,4 +852,146 @@ export function clearMinecraftUsername(user: User) {
 			[MinecraftRow["discord_id"]]
 		>(`DELETE FROM minecraft WHERE discord_id = ?`)
 		.run(user.id);
+}
+
+export interface RecapStats {
+	mostMessagesDay: {
+		/** The timestamp of some message from the user's most active day of the year */
+		timestamp: Date;
+		/** Number of messages sent on that day */
+		count: number;
+	} | null;
+	messagesSent: number;
+	rank: number;
+	topChannels: string[];
+	topEmojis: string[];
+	starboardMessages: number;
+	neetcode: UserStats;
+}
+
+export function getRecapStats(year: number, user: User): RecapStats {
+	// Get UNIX timestamps for the start (inclusive) and end (exclusive) of the year
+	const startOfYear = Math.floor(new Date(year, 0, 1).getTime() / 1000);
+	const endOfYear = Math.floor(new Date(year + 1, 0, 1).getTime() / 1000);
+
+	return db.transaction(() => {
+		const mostActiveDay = db
+			.query<
+				{ timestamp: number; count: number },
+				[string, number, number]
+			>(
+				`SELECT timestamp, count(*) as count
+				FROM messages
+				WHERE
+					author_id = ?1
+					AND timestamp >= ?2
+					AND timestamp < ?3
+				GROUP BY date(timestamp, 'unixepoch', 'localtime')
+				ORDER BY count(*) DESC
+				LIMIT 1`,
+			)
+			.get(user.id, startOfYear, endOfYear);
+
+		const messagesSent = db
+			.query<{ count: number }, [string, number, number]>(
+				`SELECT count(*) as count
+			FROM messages
+			WHERE
+				author_id = ?1
+				AND timestamp >= ?2
+				AND timestamp < ?3`,
+			)
+			.get(user.id, startOfYear, endOfYear)?.count;
+
+		const rank = db
+			.query<{ rank: number }, [string, number, number]>(
+				`WITH counts AS (
+					-- Select message counts with an explicit 0 row if user has no messages
+					SELECT author_id, count(*) as count
+					FROM messages
+					WHERE timestamp >= ?2 AND timestamp < ?3
+					GROUP BY author_id
+					UNION ALL
+					SELECT ?1 as author_id, 0 as count
+					WHERE NOT EXISTS (
+						SELECT 1 FROM messages WHERE author_id = ?1
+					)
+				),
+				ranked AS (
+					SELECT
+						author_id,
+						rank() OVER (ORDER BY count DESC) as rank
+					FROM counts
+					GROUP BY author_id
+				)
+				SELECT rank FROM ranked WHERE author_id = ?1`,
+			)
+			.get(user.id, startOfYear, endOfYear)?.rank;
+		if (rank === undefined) {
+			throw new Error("Rank query returned no rows");
+		}
+
+		const topChannels = db
+			.query<{ channel_id: string }, [string, number, number]>(
+				`SELECT channel_id FROM messages
+				WHERE
+					author_id = ?1
+					AND timestamp >= ?2
+					AND timestamp < ?3
+				GROUP BY channel_id
+				ORDER BY count(*) DESC
+				LIMIT 5`,
+			)
+			.all(user.id, startOfYear, endOfYear)
+			.map(({ channel_id }) => channel_id);
+
+		log.debug("Starting counting emojis");
+		const messageContentIter = db
+			.query<
+				{ content: string },
+				[string, number, number]
+			>(`SELECT content FROM messages WHERE author_id = ?1 AND timestamp >= ?2 AND timestamp < ?3`)
+			.iterate(user.id, startOfYear, endOfYear);
+		const emojiHistogram: Map<string, number> = new Map();
+		const emojiRegex = /\p{Emoji_Presentation}/gv;
+		for (const row of messageContentIter) {
+			const emojis = row.content.match(emojiRegex);
+			emojis?.forEach((emoji) => {
+				emojiHistogram.set(emoji, (emojiHistogram.get(emoji) ?? 0) + 1);
+			});
+		}
+		const emojis = Array.from(emojiHistogram.entries())
+			.toSorted((a, b) => b[1] - a[1])
+			.map((pair) => pair[0])
+			.slice(0, 5);
+		log.debug("Done counting emojis");
+
+		const starboardMessages =
+			db
+				.query<{ count: number }, [string, number, number, Channels]>(
+					`SELECT count(*) as count FROM messages
+					WHERE
+						channel_id = ?4
+						AND timestamp >= ?2
+						AND timestamp < ?3
+						AND content LIKE ( '% (<@' || ?1 || '>)' )`,
+				)
+				.get(user.id, startOfYear, endOfYear, Channels.Starboard)
+				?.count ?? 0;
+
+		return {
+			mostMessagesDay: mostActiveDay
+				? {
+						timestamp: new Date(mostActiveDay.timestamp * 1000),
+						count: mostActiveDay.count,
+					}
+				: null,
+			messagesSent: messagesSent ?? 0,
+			rank,
+			topChannels,
+			topEmojis: emojis,
+			starboardMessages,
+			neetcode: getStats(user),
+		} satisfies RecapStats;
+	})();
 }

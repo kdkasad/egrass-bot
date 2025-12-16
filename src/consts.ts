@@ -6,6 +6,8 @@ export enum Users {
 
 export enum Channels {
 	Neetcode = "1417344977641672764",
+	Announcements = "1170548119881138207",
+	Starboard = "1374949544923500594",
 }
 
 export enum Stickers {
