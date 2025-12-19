@@ -1,6 +1,7 @@
 // Worker to execute an arbitrary read-only query against the database.
 
 import { rodb } from "../db";
+import { log } from "../logging";
 import type { QueryWorkerResult } from "../utils";
 import stringWidth from "string-width";
 
@@ -47,31 +48,31 @@ async function resultsAsBoxDrawingTable(
 	// 1. Get column headers
 	const headers = Object.keys(rows[0]);
 
-	// 2. Calculate column widths based on max length of header vs data
+	// 2. Calculate column widths based on max length of data
 	const widths = await new Promise<number[]>((resolve) => {
-		let start = 0;
-		let col = 0;
 		const result: number[] = new Array(headers.length).fill(0);
-		const processChunk = () => {
-			if (start >= rows.length) {
+		const processChunk = (start: number) => {
+			const chunkEnd = start + CHUNK_SIZE;
+			for (let i = 0; i < rows.length && i < chunkEnd; i++) {
+				headers.entries().forEach(([colIdx, colName]) => {
+					result[colIdx] = Math.max(
+						result[colIdx],
+						stringWidth(String(rows[i][colName] ?? "")),
+					);
+				});
+			}
+			if (chunkEnd >= rows.length) {
 				resolve(result);
+			} else {
+				setTimeout(processChunk, 0, chunkEnd);
 			}
-			let i = 0;
-			for (i = 0; i < rows.length && i < start + CHUNK_SIZE; i++) {
-				const w = stringWidth(String(rows[i][headers[col]] ?? ""));
-				if (w > result[col]) {
-					result[col] = w;
-				}
-			}
-			start = i;
-			setTimeout(processChunk, 0);
 		};
-		for (col = 0; col < headers.length; col++) {
-			start = 0;
-			processChunk();
-			// Add 2 for padding (one space on each side)
-			result[col] = Math.max(stringWidth(headers[col]), result[col]) + 2;
-		}
+		processChunk(0);
+	});
+	// Expand widths to fit headers if wider than data rows
+	headers.entries().forEach(([colIdx, colName]) => {
+		// Add 2 for padding (one space on each side)
+		widths[colIdx] = Math.max(stringWidth(colName), widths[colIdx]) + 2;
 	});
 
 	// Helper to create row lines
@@ -89,8 +90,9 @@ async function resultsAsBoxDrawingTable(
 		return " ".repeat(left) + text + " ".repeat(space - left);
 	};
 
-	// Helper to pad text (for data - usually left aligned in SQLite)
+	// Helper to pad text (for data - left aligned)
 	const pad = (text: string, width: number) => {
+		log.debug("pad", { text, width });
 		return " " + text + " ".repeat(width - stringWidth(text) - 1);
 	};
 
@@ -130,7 +132,7 @@ async function resultsAsBoxDrawingTable(
 			if (start + CHUNK_SIZE >= rows.length) {
 				resolve();
 			} else {
-				setTimeout(() => processChunk(start + CHUNK_SIZE), 0);
+				setTimeout(processChunk, 0, start + CHUNK_SIZE);
 			}
 		};
 		setTimeout(() => processChunk(0), 0);

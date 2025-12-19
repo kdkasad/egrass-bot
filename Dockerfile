@@ -19,4 +19,4 @@ ENV LANG=en_US.UTF-8
 VOLUME [ "/var/lib/bot" ]
 WORKDIR /var/lib/bot
 
-ENTRYPOINT ["bun", "run", "/app/src/index.ts"]
+ENTRYPOINT ["bun", "run", "-b", "/app/src/index.ts"]
