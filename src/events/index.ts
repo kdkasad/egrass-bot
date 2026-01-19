@@ -1,5 +1,6 @@
 import type { Client } from "discord.js";
 import * as solves from "./reactions/solves";
+import * as reactionTracking from "./reactions/track";
 import * as quotes from "./messages/quotes";
 import * as markovTraining from "./messages/markov-training";
 import * as memberTracking from "./members/track";
@@ -13,6 +14,7 @@ interface Registerable {
 
 const consumers: Registerable[] = [
 	solves,
+	reactionTracking,
 	quotes,
 	markovTraining,
 	memberTracking,

@@ -3,6 +3,7 @@ import { getDate } from "./utils";
 import {
 	GuildMember,
 	messageLink,
+	MessageReaction,
 	type Message,
 	type PartialGuildMember,
 	type PartialMessage,
@@ -257,6 +258,19 @@ if (version < 9) {
 		db.run(`UPDATE schema_version SET version = 9`);
 	})();
 	log.debug("Applied migration 9");
+}
+if (version < 10) {
+	db.transaction(() => {
+		db.run(`CREATE TABLE reactions (
+			message_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			emoji TEXT NOT NULL,
+			timestamp INTEGER NOT NULL,
+			PRIMARY KEY(message_id, user_id, emoji)
+		) STRICT`);
+		db.run(`UPDATE schema_version SET version = 10`);
+	})();
+	log.debug("Applied migration 10");
 }
 log.info("Database initialization complete");
 
@@ -994,4 +1008,27 @@ export function getRecapStats(year: number, user: User): RecapStats {
 			neetcode: getStats(user),
 		} satisfies RecapStats;
 	})();
+}
+
+export function addReaction(reaction: MessageReaction, user: User) {
+	const emoji = reaction.emoji.id ?? reaction.emoji.name;
+	if (!emoji) throw new Error("Reaction emoji has no ID or name");
+	const now = Math.floor(new Date().getTime() / 1000);
+	return db
+		.query<
+			null,
+			[string, string, string, number]
+		>(`INSERT INTO reactions (message_id, user_id, emoji, timestamp) VALUES (?, ?, ?, ?)`)
+		.run(reaction.message.id, user.id, emoji, now);
+}
+
+export function removeReaction(reaction: MessageReaction, user: User) {
+	const emoji = reaction.emoji.id ?? reaction.emoji.name;
+	if (!emoji) throw new Error("Reaction emoji has no ID or name");
+	return db
+		.query<
+			null,
+			[string, string, string]
+		>(`DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`)
+		.run(reaction.message.id, user.id, emoji);
 }
