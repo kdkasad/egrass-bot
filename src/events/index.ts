@@ -7,6 +7,7 @@ import * as memberTracking from "./members/track";
 import * as sql from "./messages/sql";
 import * as atharvaDms from "./messages/atharva-dms";
 import * as recap from "./interactions/recap";
+import * as bruh from "./messages/bruh";
 
 interface Registerable {
 	register(client: Client<true>): void | PromiseLike<void>;
@@ -21,6 +22,7 @@ const consumers: Registerable[] = [
 	sql,
 	atharvaDms,
 	recap,
+	bruh,
 ];
 
 export function register(client: Client<true>) {

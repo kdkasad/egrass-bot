@@ -7,6 +7,7 @@ const schema = z.object({
 	MINECRAFT_RCON_HOST: z.optional(z.string()),
 	MINECRAFT_RCON_PORT: z.optional(z.coerce.number()),
 	MINECRAFT_RCON_PASSWORD: z.optional(z.string()),
+	DISABLE_TROLLING: z._default(z.coerce.boolean(), false),
 });
 
 export const env = schema.parse(Bun.env);
