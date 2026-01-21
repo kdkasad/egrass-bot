@@ -23,7 +23,7 @@ export function register(client: Client<true>) {
 		})
 		.on("guildMemberUpdate", (oldMember, newMember) => {
 			addOrUpdateMember(newMember);
-			log.info("Guild member updated", {
+			log.debug("Guild member updated", {
 				oldName: newMember.displayName,
 				newName: newMember.displayName,
 			});

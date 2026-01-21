@@ -4,6 +4,10 @@ export enum Users {
 	Atharva = "1007790710042394624",
 }
 
+export enum Roles {
+	Punishment = "1463375447927689298",
+}
+
 export enum Channels {
 	Neetcode = "1417344977641672764",
 	Announcements = "1170548119881138207",
@@ -14,8 +18,7 @@ export enum Stickers {
 	AtharvaSays = "1411067078831767614",
 }
 
-export enum QuoteCategories {
-}
+export enum QuoteCategories {}
 
 export enum Guilds {
 	Egrass = "1154149509446770808",
