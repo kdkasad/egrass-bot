@@ -4,6 +4,7 @@ import { Guilds, Roles, Users, Channels } from "../../consts";
 import { log } from "../../logging";
 
 const TIMEOUT_MS = 16700; // 16.7 seconds
+const DAY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 export function register(client: Client<true>) {
 	if (!env.DISABLE_TROLLING) {
@@ -45,8 +46,13 @@ async function punishUser(user: User, guild: Guild) {
 	const member = await guild.members.fetch(user);
 	await member.roles.add(Roles.Punishment, "you know what you did");
 	log.debug("Punishment role added to user", { userId: user.id });
+	
+	// 1/670 chance for a whole day timeout heheheha
+	const useDayTimeout = Math.random() < 1 / 670;
+	const timeoutDuration = useDayTimeout ? DAY_TIMEOUT_MS : TIMEOUT_MS;
+	
 	setTimeout(async () => {
 		await member.roles.remove(Roles.Punishment);
 		log.debug("Punishment role removed from user", { userId: user.id });
-	}, TIMEOUT_MS);
+	}, timeoutDuration);
 }
