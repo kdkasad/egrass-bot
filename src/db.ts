@@ -22,6 +22,7 @@ export const TABLES = [
 	"messages",
 	"markov4",
 	"members",
+	"day_timeouts",
 ] as const;
 
 export type Table = (typeof TABLES)[number];
@@ -94,6 +95,12 @@ export interface SqlResponsesRow {
 export interface MinecraftRow {
 	discord_id: string;
 	mc_username: string;
+}
+
+export interface DayTimeoutRow {
+	user_id: string;
+	guild_id: string;
+	expires_at: number; // Unix timestamp in seconds
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
@@ -271,6 +278,19 @@ if (version < 10) {
 		db.run(`UPDATE schema_version SET version = 10`);
 	})();
 	log.debug("Applied migration 10");
+}
+if (version < 11) {
+	db.transaction(() => {
+		db.run(`CREATE TABLE day_timeouts (
+			user_id TEXT NOT NULL,
+			guild_id TEXT NOT NULL,
+			expires_at INTEGER NOT NULL,
+			PRIMARY KEY(user_id, guild_id)
+		) STRICT`);
+		db.run(`CREATE INDEX idx_day_timeouts_expires_at ON day_timeouts(expires_at)`);
+		db.run(`UPDATE schema_version SET version = 11`);
+	})();
+	log.debug("Applied migration 11");
 }
 log.info("Database initialization complete");
 
@@ -1031,4 +1051,41 @@ export function removeReaction(reaction: MessageReaction, user: User) {
 			[string, string, string]
 		>(`DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`)
 		.run(reaction.message.id, user.id, emoji);
+}
+
+// Day timeout functions
+const addDayTimeoutQuery = db.query<
+	null,
+	[DayTimeoutRow["user_id"], DayTimeoutRow["guild_id"], DayTimeoutRow["expires_at"]]
+>(`INSERT OR REPLACE INTO day_timeouts (user_id, guild_id, expires_at) VALUES (?, ?, ?)`);
+
+export function addDayTimeout(userId: string, guildId: string, expiresAt: number) {
+	return addDayTimeoutQuery.run(userId, guildId, expiresAt);
+}
+
+const removeDayTimeoutQuery = db.query<
+	null,
+	[DayTimeoutRow["user_id"], DayTimeoutRow["guild_id"]]
+>(`DELETE FROM day_timeouts WHERE user_id = ? AND guild_id = ?`);
+
+export function removeDayTimeout(userId: string, guildId: string) {
+	return removeDayTimeoutQuery.run(userId, guildId);
+}
+
+const getExpiredDayTimeoutsQuery = db.query<
+	DayTimeoutRow,
+	[number]
+>(`SELECT * FROM day_timeouts WHERE expires_at <= ?`);
+
+export function getExpiredDayTimeouts(now: number = Math.floor(Date.now() / 1000)): DayTimeoutRow[] {
+	return getExpiredDayTimeoutsQuery.all(now);
+}
+
+const getAllDayTimeoutsQuery = db.query<
+	DayTimeoutRow,
+	[]
+>(`SELECT * FROM day_timeouts`);
+
+export function getAllDayTimeouts(): DayTimeoutRow[] {
+	return getAllDayTimeoutsQuery.all();
 }
