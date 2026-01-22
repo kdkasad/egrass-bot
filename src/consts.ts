@@ -5,7 +5,7 @@ export enum Users {
 }
 
 export enum Roles {
-	Punishment = "1463375447927689298",
+	Mute = "1463375447927689298",
 }
 
 export enum Channels {

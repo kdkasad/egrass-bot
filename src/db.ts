@@ -22,6 +22,8 @@ export const TABLES = [
 	"messages",
 	"markov4",
 	"members",
+	"reactions",
+	"mutes",
 ] as const;
 
 export type Table = (typeof TABLES)[number];
@@ -94,6 +96,12 @@ export interface SqlResponsesRow {
 export interface MinecraftRow {
 	discord_id: string;
 	mc_username: string;
+}
+
+export interface MuteRow {
+	user_id: string;
+	guild_id: string;
+	expires_at: number;
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
@@ -271,6 +279,16 @@ if (version < 10) {
 		db.run(`UPDATE schema_version SET version = 10`);
 	})();
 	log.debug("Applied migration 10");
+}
+if (version < 11) {
+	db.transaction(() => {
+		db.run(`CREATE TABLE mutes (
+			user_id TEXT PRIMARY KEY,
+			expires_at INTEGER NOT NULL
+		) STRICT`);
+		db.run(`UPDATE schema_version SET version = 11`);
+	})();
+	log.debug("Applied migration 11");
 }
 log.info("Database initialization complete");
 
@@ -1031,4 +1049,34 @@ export function removeReaction(reaction: MessageReaction, user: User) {
 			[string, string, string]
 		>(`DELETE FROM reactions WHERE message_id = ? AND user_id = ? AND emoji = ?`)
 		.run(reaction.message.id, user.id, emoji);
+}
+
+export function addMute(userId: string, expiresAt: Date) {
+	return db
+		.query<
+			null,
+			[MuteRow["user_id"], MuteRow["expires_at"]]
+		>(`INSERT OR REPLACE INTO mutes (user_id, expires_at) VALUES (?, ?)`)
+		.run(userId, Math.floor(expiresAt.getTime() / 1000));
+}
+
+export function removeMute(userId: string) {
+	return db
+		.query<
+			null,
+			[MuteRow["user_id"]]
+		>(`DELETE FROM mutes WHERE user_id = ?`)
+		.run(userId);
+}
+
+export function getMutes(): { userId: string; expiresAt: Date }[] {
+	return db
+		.query<Pick<MuteRow, "user_id" | "expires_at">, []>(
+			`SELECT user_id, expires_at FROM mutes`,
+		)
+		.all()
+		.map((row) => ({
+			userId: row.user_id,
+			expiresAt: new Date(row.expires_at * 1000),
+		}));
 }
