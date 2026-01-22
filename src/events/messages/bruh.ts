@@ -1,6 +1,6 @@
 import { Events, Guild, Message, User, type Client } from "discord.js";
 import { env } from "../../env";
-import { Guilds, Roles, Users } from "../../consts";
+import { Guilds, Roles, Users, Channels } from "../../consts";
 import { log } from "../../logging";
 
 const TIMEOUT_MS = 16700; // 16.7 seconds
@@ -23,6 +23,7 @@ async function handleMessage(message: Message) {
 	if (
 		!message.author.bot &&
 		message.author.id !== Users.Kian &&
+		message.channelId !== Channels.Announcements &&
 		message.inGuild() &&
 		message.content.match(
 			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b6+7+\b)/i,
