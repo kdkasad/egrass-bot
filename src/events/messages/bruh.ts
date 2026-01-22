@@ -3,6 +3,8 @@ import { env } from "../../env";
 import { Guilds, Roles, Users } from "../../consts";
 import { log } from "../../logging";
 
+const TIMEOUT_MS = 16700; // 16.7 seconds
+
 export function register(client: Client<true>) {
 	if (!env.DISABLE_TROLLING) {
 		client.on(Events.MessageCreate, handleMessage);
@@ -45,5 +47,5 @@ async function punishUser(user: User, guild: Guild) {
 	setTimeout(async () => {
 		await member.roles.remove(Roles.Punishment);
 		log.debug("Punishment role removed from user", { userId: user.id });
-	}, 6700);
+	}, TIMEOUT_MS);
 }
