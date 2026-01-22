@@ -22,7 +22,8 @@ export const TABLES = [
 	"messages",
 	"markov4",
 	"members",
-	"day_timeouts",
+	"reactions",
+	"mutes",
 ] as const;
 
 export type Table = (typeof TABLES)[number];
@@ -97,10 +98,10 @@ export interface MinecraftRow {
 	mc_username: string;
 }
 
-export interface DayTimeoutRow {
+export interface MuteRow {
 	user_id: string;
 	guild_id: string;
-	expires_at: number; // Unix timestamp in seconds
+	expires_at: number;
 }
 
 const db = new Database("data.sqlite3", { strict: true, create: true });
@@ -281,13 +282,10 @@ if (version < 10) {
 }
 if (version < 11) {
 	db.transaction(() => {
-		db.run(`CREATE TABLE day_timeouts (
-			user_id TEXT NOT NULL,
-			guild_id TEXT NOT NULL,
-			expires_at INTEGER NOT NULL,
-			PRIMARY KEY(user_id, guild_id)
+		db.run(`CREATE TABLE mutes (
+			user_id TEXT PRIMARY KEY,
+			expires_at INTEGER NOT NULL
 		) STRICT`);
-		db.run(`CREATE INDEX idx_day_timeouts_expires_at ON day_timeouts(expires_at)`);
 		db.run(`UPDATE schema_version SET version = 11`);
 	})();
 	log.debug("Applied migration 11");
@@ -1053,39 +1051,32 @@ export function removeReaction(reaction: MessageReaction, user: User) {
 		.run(reaction.message.id, user.id, emoji);
 }
 
-// Day timeout functions
-const addDayTimeoutQuery = db.query<
-	null,
-	[DayTimeoutRow["user_id"], DayTimeoutRow["guild_id"], DayTimeoutRow["expires_at"]]
->(`INSERT OR REPLACE INTO day_timeouts (user_id, guild_id, expires_at) VALUES (?, ?, ?)`);
-
-export function addDayTimeout(userId: string, guildId: string, expiresAt: number) {
-	return addDayTimeoutQuery.run(userId, guildId, expiresAt);
+export function addMute(userId: string, expiresAt: Date) {
+	return db
+		.query<
+			null,
+			[MuteRow["user_id"], MuteRow["expires_at"]]
+		>(`INSERT OR REPLACE INTO mutes (user_id, expires_at) VALUES (?, ?)`)
+		.run(userId, Math.floor(expiresAt.getTime() / 1000));
 }
 
-const removeDayTimeoutQuery = db.query<
-	null,
-	[DayTimeoutRow["user_id"], DayTimeoutRow["guild_id"]]
->(`DELETE FROM day_timeouts WHERE user_id = ? AND guild_id = ?`);
-
-export function removeDayTimeout(userId: string, guildId: string) {
-	return removeDayTimeoutQuery.run(userId, guildId);
+export function removeMute(userId: string) {
+	return db
+		.query<
+			null,
+			[MuteRow["user_id"]]
+		>(`DELETE FROM mutes WHERE user_id = ?`)
+		.run(userId);
 }
 
-const getExpiredDayTimeoutsQuery = db.query<
-	DayTimeoutRow,
-	[number]
->(`SELECT * FROM day_timeouts WHERE expires_at <= ?`);
-
-export function getExpiredDayTimeouts(now: number = Math.floor(Date.now() / 1000)): DayTimeoutRow[] {
-	return getExpiredDayTimeoutsQuery.all(now);
-}
-
-const getAllDayTimeoutsQuery = db.query<
-	DayTimeoutRow,
-	[]
->(`SELECT * FROM day_timeouts`);
-
-export function getAllDayTimeouts(): DayTimeoutRow[] {
-	return getAllDayTimeoutsQuery.all();
+export function getMutes(): { userId: string; expiresAt: Date }[] {
+	return db
+		.query<Pick<MuteRow, "user_id" | "expires_at">, []>(
+			`SELECT user_id, expires_at FROM mutes`,
+		)
+		.all()
+		.map((row) => ({
+			userId: row.user_id,
+			expiresAt: new Date(row.expires_at * 1000),
+		}));
 }
