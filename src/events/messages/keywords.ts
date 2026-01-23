@@ -1,6 +1,7 @@
 import {
 	Events,
 	Message,
+	MessageReferenceType,
 	type Client,
 	type OmitPartialGroupDMChannel,
 	type PartialMessage,
@@ -23,7 +24,10 @@ async function test(
 		message.content.match(pattern) !== null
 	) {
 		return true;
-	} else if (followReference && message.reference !== null) {
+	} else if (
+		followReference &&
+		message.reference?.type === MessageReferenceType.Forward
+	) {
 		const ref = await message.fetchReference();
 		return test(ref, false);
 	}
