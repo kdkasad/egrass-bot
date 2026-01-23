@@ -1,4 +1,12 @@
-import { Events, Guild, Message, User, type Client } from "discord.js";
+import {
+	Events,
+	Guild,
+	Message,
+	User,
+	type Client,
+	type OmitPartialGroupDMChannel,
+	type PartialMessage,
+} from "discord.js";
 import { env } from "../../env";
 import { Guilds, Roles, Users, Channels } from "../../consts";
 import { log } from "../../logging";
@@ -9,7 +17,8 @@ const LONG_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 export function register(client: Client<true>) {
 	if (!env.DISABLE_TROLLING) {
-		client.on(Events.MessageCreate, handleMessage);
+		client.on(Events.MessageCreate, handleNewMessage);
+		client.on(Events.MessageUpdate, handleEditMessage);
 	}
 	handleExistingMutes(client);
 }
@@ -31,16 +40,32 @@ async function handleExistingMutes(client: Client<true>) {
 	);
 }
 
-async function handleMessage(message: Message) {
-	if (
+function test(message: Message): boolean {
+	return (
 		!message.author.bot &&
 		message.author.id !== Users.Kian &&
 		message.channelId !== Channels.Announcements &&
 		message.inGuild() &&
 		message.content.match(
 			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b6+7+\b)/i,
-		)
-	) {
+		) !== null
+	);
+}
+
+async function handleEditMessage(
+	oldmsg: OmitPartialGroupDMChannel<Message | PartialMessage>,
+	newmsg: Message,
+) {
+	if (oldmsg.partial) {
+		oldmsg = await oldmsg.fetch();
+	}
+	if (!test(oldmsg)) {
+		await handleNewMessage(newmsg);
+	}
+}
+
+async function handleNewMessage(message: Message) {
+	if (test(message)) {
 		await Promise.all([
 			message.react("🥀"),
 			message.reply(
@@ -48,7 +73,7 @@ async function handleMessage(message: Message) {
 					? "https://tenor.com/view/bee-movie-layton-t-montgomery-monty-montgomery-67-6-7-gif-9758470031245276788"
 					: "OMG HAHA SO FUNNY SIX AND SEVEN ARE CONSECUTIVE DIGITS 🤯",
 			),
-			mute(message.author, message.guild),
+			mute(message.author, message.guild!),
 		]);
 	}
 }
