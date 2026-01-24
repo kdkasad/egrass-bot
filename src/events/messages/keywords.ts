@@ -2,6 +2,7 @@ import {
 	Events,
 	Message,
 	MessageReferenceType,
+	userMention,
 	type Client,
 	type OmitPartialGroupDMChannel,
 	type PartialMessage,
@@ -39,7 +40,10 @@ async function onNewMessage(message: Message) {
 		const client = message.client;
 		const kian = await client.users.fetch(Users.Kian);
 		const dm = await kian.createDM();
-		dm.send(`${message.member!.displayName} mentioned you: ${message.url}`);
+		await dm.send({
+			content: `${userMention(message.author.id)} mentioned you in ${message.channel.id}`,
+			forward: { message },
+		});
 	}
 }
 
