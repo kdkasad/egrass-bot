@@ -1,4 +1,5 @@
 import {
+	channelLink,
 	Events,
 	Message,
 	MessageReferenceType,
@@ -7,7 +8,8 @@ import {
 	type OmitPartialGroupDMChannel,
 	type PartialMessage,
 } from "discord.js";
-import { Users } from "../../consts";
+import { Guilds, Users } from "../../consts";
+import { log } from "../../logging";
 
 export function register(client: Client<true>) {
 	client.on(Events.MessageCreate, onNewMessage);
@@ -20,10 +22,13 @@ async function test(
 ): Promise<boolean> {
 	const pattern = /\bkian\b/i;
 	if (
-		!message.author.bot &&
-		message.author.id !== Users.Kian &&
-		message.content.match(pattern) !== null
+		message.author.bot ||
+		message.author.id === Users.Kian ||
+		message.guildId !== Guilds.Egrass
 	) {
+		return false;
+	}
+	if (pattern.test(message.content)) {
 		return true;
 	} else if (
 		followReference &&
@@ -40,9 +45,15 @@ async function onNewMessage(message: Message) {
 		const client = message.client;
 		const kian = await client.users.fetch(Users.Kian);
 		const dm = await kian.createDM();
+		await dm.send(
+			`${userMention(message.author.id)} mentioned you in ${channelLink(message.channel.id)}`,
+		);
 		await dm.send({
-			content: `${userMention(message.author.id)} mentioned you in ${message.channel.id}`,
 			forward: { message },
+		});
+		log.debug("Keyword notification sent", {
+			messageId: message.id,
+			content: message.content,
 		});
 	}
 }
