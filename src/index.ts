@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/bun";
 import {
 	ActivityType,
 	Client,
@@ -14,6 +15,11 @@ import * as events from "./events";
 import { closeDatabase } from "./db";
 import { log } from "./logging";
 import { wrapError } from "./utils";
+
+Sentry.init({
+	dsn: env.SENTRY_DSN,
+	enableLogs: true,
+});
 
 // Update application commands
 const rest = new REST().setToken(env.DISCORD_BOT_TOKEN);
