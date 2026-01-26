@@ -9,6 +9,7 @@ import * as atharvaDms from "./messages/atharva-dms";
 import * as recap from "./interactions/recap";
 import * as bruh from "./messages/bruh";
 import * as keywords from "./messages/keywords";
+import * as explode from "./messages/explode";
 
 interface Registerable {
 	register(client: Client<true>): void | PromiseLike<void>;
@@ -25,6 +26,7 @@ const consumers: Registerable[] = [
 	recap,
 	bruh,
 	keywords,
+	explode,
 ];
 
 export function register(client: Client<true>) {

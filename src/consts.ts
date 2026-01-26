@@ -18,6 +18,10 @@ export enum Stickers {
 	AtharvaSays = "1411067078831767614",
 }
 
+export enum Emoji {
+	Sad = "1313202473854570596",
+}
+
 export enum QuoteCategories {}
 
 export enum Guilds {
