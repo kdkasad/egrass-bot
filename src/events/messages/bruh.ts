@@ -44,7 +44,9 @@ function test(message: Message): boolean {
 	return (
 		!message.author.bot &&
 		message.author.id !== Users.Kian &&
-		message.channelId !== Channels.Announcements &&
+		(message.channel.isThread()
+			? message.channel.parentId !== Channels.Announcements
+			: message.channelId !== Channels.Announcements) &&
 		message.inGuild() &&
 		message.content.match(
 			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b6+7+\b)/i,
