@@ -628,10 +628,11 @@ export function createMessage(
 	);
 }
 
+const deleteMessageQuery = db.query<null, [MessageRow["id"]]>(
+	`DELETE FROM messages WHERE id = ?`,
+);
 export function deleteMessage(message: Message<true>) {
-	return db
-		.query<void, [Message["id"]]>(`DELETE FROM messages WHERE id = ?`)
-		.run(message.id);
+	return deleteMessageQuery.run(message.id);
 }
 
 const createMarkov4EntryQuery = db.query<
@@ -667,6 +668,13 @@ export function createMarkov4Entry(
 		word4,
 		word5,
 	);
+}
+
+const deleteMarkovEntriesQuery = db.query<null, [Markov4Row["message_id"]]>(
+	`DELETE FROM markov4 WHERE message_id = ?`,
+);
+export function deleteMarkovEntries(messageId: Markov4Row["message_id"]) {
+	return deleteMarkovEntriesQuery.run(messageId);
 }
 
 const nextTokenCandidateCountWithAuthorQuery = db.query<

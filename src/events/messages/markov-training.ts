@@ -4,7 +4,12 @@ import type {
 	OmitPartialGroupDMChannel,
 	PartialMessage,
 } from "discord.js";
-import { createMessage, deleteMessage, doInTransaction } from "../../db";
+import {
+	createMessage,
+	deleteMarkovEntries,
+	deleteMessage,
+	doInTransaction,
+} from "../../db";
 import { addMessageToMarkov4 } from "../../markov";
 
 export function register(client: Client<true>) {
@@ -30,7 +35,18 @@ async function handlerCreate(message: OmitPartialGroupDMChannel<Message>) {
 	saveAndTrainOnMessageTransaction(message);
 }
 
-async function handlerDelete(message: OmitPartialGroupDMChannel<Message> | PartialMessage) {
+const deleteMessageAndEntriesTransaction = doInTransaction(
+	(message: Message<true>) => {
+		deleteMessage(message);
+		if (!message.author.bot) {
+			deleteMarkovEntries(message.id);
+		}
+	},
+);
+
+async function handlerDelete(
+	message: OmitPartialGroupDMChannel<Message> | PartialMessage,
+) {
 	if (!message.inGuild() || message.member === null) return;
-	deleteMessage(message);
+	deleteMessageAndEntriesTransaction(message);
 }
