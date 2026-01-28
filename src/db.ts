@@ -628,6 +628,12 @@ export function createMessage(
 	);
 }
 
+export function deleteMessage(message: Message<true>) {
+	return db
+		.query<void, [Message["id"]]>(`DELETE FROM messages WHERE id = ?`)
+		.run(message.id);
+}
+
 const createMarkov4EntryQuery = db.query<
 	null,
 	[
