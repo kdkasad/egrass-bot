@@ -10,10 +10,31 @@ import {
 } from "discord.js";
 import { Guilds, Users } from "../../consts";
 import { log } from "../../logging";
+import * as Sentry from "@sentry/bun";
 
 export function register(client: Client<true>) {
-	client.on(Events.MessageCreate, onNewMessage);
-	client.on(Events.MessageUpdate, onEditedMessage);
+	client.on(Events.MessageCreate, (message) =>
+		Sentry.withIsolationScope(async () => {
+			Sentry.setContext(
+				"message",
+				message as unknown as Record<string, unknown>,
+			);
+			return await onNewMessage(message);
+		}),
+	);
+	client.on(Events.MessageUpdate, (oldMessage, newMessage) =>
+		Sentry.withIsolationScope(async () => {
+			Sentry.setContext(
+				"oldMessage",
+				oldMessage as unknown as Record<string, unknown>,
+			);
+			Sentry.setContext(
+				"newMessage",
+				newMessage as unknown as Record<string, unknown>,
+			);
+			return await onEditedMessage(oldMessage, newMessage);
+		}),
+	);
 }
 
 async function test(
