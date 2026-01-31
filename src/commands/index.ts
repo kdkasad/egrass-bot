@@ -8,6 +8,7 @@ import * as imitate from "./imitate";
 import * as markov from "./markov";
 import * as minecraft from "./minecraft";
 import * as recap from "./recap";
+import * as googleIt from "./google-it";
 
 export type CommandHandler = (
 	interaction: ChatInputCommandInteraction,
@@ -18,7 +19,7 @@ export interface Command {
 	execute: CommandHandler;
 }
 
-const commandList: Command[] = [neetcode, imitate, markov, minecraft, recap];
+const commandList: Command[] = [neetcode, imitate, markov, minecraft, recap, googleIt];
 
 export const commands: Collection<string, Command> = Collection.combineEntries(
 	commandList.map((command) => [command.data.name, command]),
