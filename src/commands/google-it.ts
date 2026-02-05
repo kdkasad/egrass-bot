@@ -8,7 +8,15 @@ import { Channels } from "../consts";
 
 export const data = new SlashCommandBuilder()
 	.setName("google-it")
-	.setDescription("RTFM");
+	.setDescription("RTFM")
+	.addStringOption((option) =>
+		option
+			.setName("query")
+			.setDescription(
+				"Search query to use (defaults to last message's content if empty)",
+			)
+			.setRequired(false),
+	);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	await Sentry.withIsolationScope(async (scope) => {
@@ -48,8 +56,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 				throw new Error("Last message in channel is null");
 			}
 
+			const queryArg = interaction.options.getString("query")?.trim();
+			const query =
+				queryArg && queryArg.length > 0
+					? queryArg
+					: interaction.channel.lastMessage.content.trim();
+
 			await interaction.channel.send({
-				content: `https://www.google.com/search?q=${encodeURIComponent(interaction.channel.lastMessage.content)}`,
+				content: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
 				flags: MessageFlags.SuppressNotifications,
 			});
 			await interaction.reply({
