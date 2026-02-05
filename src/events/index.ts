@@ -10,6 +10,7 @@ import * as recap from "./interactions/recap";
 import * as bruh from "./messages/bruh";
 import * as keywords from "./messages/keywords";
 import * as explode from "./messages/explode";
+import * as lockIn from "./messages/lock-in";
 
 interface Registerable {
 	register(client: Client<true>): void | PromiseLike<void>;
@@ -27,6 +28,7 @@ const consumers: Registerable[] = [
 	bruh,
 	keywords,
 	explode,
+	lockIn,
 ];
 
 export function register(client: Client<true>) {

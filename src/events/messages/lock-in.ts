@@ -1,0 +1,41 @@
+import { Events, type Client, type Message } from "discord.js";
+import { env } from "../../env";
+import { ChannelCategories, Users } from "../../consts";
+import { sentryMessageEventWrapper } from "../../logging";
+
+let enabled = true;
+
+export function register(client: Client<true>) {
+	if (env.DISABLE_TROLLING) {
+		return;
+	}
+
+	client.on(
+		Events.MessageCreate,
+		sentryMessageEventWrapper(async (message: Message) => {
+			if (
+				enabled &&
+				message.author.id === Users.Sophia &&
+				message.inGuild() &&
+				message.channel.parentId !== ChannelCategories.Classes &&
+				Math.random() < 0.2
+			) {
+				const sentMsg = await message.reply("AAAAAAAAAAAAAAH");
+				sentMsg
+					.awaitReactions({
+						filter: (reaction) => reaction.emoji.name === "🤫",
+						max: 1,
+						idle: 60000, // 1 minute
+					})
+					.then((reactions) => {
+						if (reactions.size > 0) {
+							enabled = false;
+							setTimeout(() => {
+								enabled = true;
+							}, 600_000); // 10 minutes
+						}
+					});
+			}
+		}),
+	);
+}

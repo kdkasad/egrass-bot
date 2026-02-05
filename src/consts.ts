@@ -2,6 +2,7 @@ export enum Users {
 	Alex = "526907259872083988",
 	Kian = "753840846549418024",
 	Atharva = "1007790710042394624",
+	Sophia = "592551894337978369",
 }
 
 export enum Roles {
@@ -12,6 +13,10 @@ export enum Channels {
 	Neetcode = "1417344977641672764",
 	Announcements = "1170548119881138207",
 	Starboard = "1374949544923500594",
+}
+
+export enum ChannelCategories {
+	Classes = "1277748408588828794",
 }
 
 export enum Stickers {
