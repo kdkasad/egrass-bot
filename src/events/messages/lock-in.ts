@@ -18,7 +18,7 @@ export function register(client: Client<true>) {
 				message.author.id === Users.Sophia &&
 				message.inGuild() &&
 				message.channel.parentId !== ChannelCategories.Classes &&
-				Math.random() < 0.2
+				Math.random() < (1.0 / 67.0)
 			) {
 				const sentMsg = await message.reply("AAAAAAAAAAAAAAH");
 				sentMsg
