@@ -62,13 +62,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 					? queryArg
 					: interaction.channel.lastMessage.content.trim();
 
-			await interaction.channel.send({
+			await interaction.reply({
 				content: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
 				flags: MessageFlags.SuppressNotifications,
-			});
-			await interaction.reply({
-				content: "Sent!",
-				flags: MessageFlags.Ephemeral,
 			});
 		} catch (error) {
 			Sentry.captureException(error);
