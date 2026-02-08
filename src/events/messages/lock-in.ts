@@ -25,10 +25,11 @@ export function register(client: Client<true>) {
 					.awaitReactions({
 						filter: (reaction) => reaction.emoji.name === "🤫",
 						max: 1,
-						idle: 60000, // 1 minute
+						idle: 600_000, // 10 minutes
 					})
 					.then((reactions) => {
 						if (reactions.size > 0) {
+							sentMsg.react("🤫");
 							enabled = false;
 							setTimeout(() => {
 								enabled = true;
