@@ -6,7 +6,7 @@ import { sentryMessageEventWrapper } from "../../logging";
 let enabled = true;
 
 export function register(client: Client<true>) {
-	if (env.DISABLE_TROLLING) {
+	if (env.DISABLE_LOCK_IN) {
 		return;
 	}
 
