@@ -39,10 +39,14 @@ async function test(
 		return true;
 	} else if (
 		followReference &&
-		message.reference?.type === MessageReferenceType.Forward
+		message.reference?.type === MessageReferenceType.Forward &&
+		message.reference.messageId &&
+		message.messageSnapshots.has(message.reference.messageId)
 	) {
-		const ref = await message.fetchReference();
-		return test(ref, false);
+		const snapshot = message.messageSnapshots.get(
+			message.reference.messageId,
+		)!;
+		return pattern.test(snapshot.content);
 	}
 	return false;
 }
