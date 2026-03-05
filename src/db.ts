@@ -4,6 +4,7 @@ import {
 	GuildMember,
 	messageLink,
 	MessageReaction,
+	MessageReferenceType,
 	type Message,
 	type PartialGuildMember,
 	type PartialMessage,
@@ -70,6 +71,7 @@ export interface MessageRow {
 	author_id: string;
 	timestamp: number;
 	content: string;
+	replies_to: string | null;
 }
 
 export interface Markov4Row {
@@ -289,6 +291,13 @@ if (version < 11) {
 		db.run(`UPDATE schema_version SET version = 11`);
 	})();
 	log.debug("Applied migration 11");
+}
+if (version < 12) {
+	db.transaction(() => {
+		db.run(`ALTER TABLE messages ADD COLUMN replies_to TEXT`);
+		db.run(`UPDATE schema_version SET version = 12`);
+	})();
+	log.debug("Applied migration 12");
 }
 log.info("Database initialization complete");
 
@@ -594,9 +603,10 @@ const insertMessageQuery = db.query<
 		MessageRow["author_id"],
 		MessageRow["timestamp"],
 		MessageRow["content"],
+		MessageRow["replies_to"],
 	]
 >(
-	`INSERT INTO messages (id, channel_id, guild_id, author_id, timestamp, content) VALUES (?, ?, ?, ?, ?, ?)`,
+	`INSERT INTO messages (id, channel_id, guild_id, author_id, timestamp, content, replies_to) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
 const insertOrIgnoreMessageQuery = db.query<
 	null,
@@ -607,9 +617,10 @@ const insertOrIgnoreMessageQuery = db.query<
 		MessageRow["author_id"],
 		MessageRow["timestamp"],
 		MessageRow["content"],
+		MessageRow["replies_to"],
 	]
 >(
-	`INSERT OR IGNORE INTO messages (id, channel_id, guild_id, author_id, timestamp, content) VALUES (?, ?, ?, ?, ?, ?)`,
+	`INSERT OR IGNORE INTO messages (id, channel_id, guild_id, author_id, timestamp, content, replies_to) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
 export function createMessage(
 	message: Message<true>,
@@ -618,6 +629,11 @@ export function createMessage(
 	const query = ignoreDuplicates
 		? insertOrIgnoreMessageQuery
 		: insertMessageQuery;
+	const repliesTo =
+		message.reference?.messageId &&
+		message.reference.type === MessageReferenceType.Default
+			? message.reference.messageId
+			: null;
 	return query.run(
 		message.id,
 		message.channelId,
@@ -625,6 +641,7 @@ export function createMessage(
 		message.author.id,
 		Math.floor(message.createdTimestamp / 1000),
 		message.content,
+		repliesTo,
 	);
 }
 
