@@ -62,11 +62,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 				throw new Error("Last message in channel is null");
 			}
 
-			const queryArg = interaction.options.getString("query")?.trim();
-			const query =
-				queryArg && queryArg.length > 0
-					? queryArg
-					: interaction.channel.lastMessage.content.trim();
+			let query = interaction.options.getString("query")?.trim();
+			if (!query) {
+				if (!interaction.channel.lastMessage) {
+					await interaction.reply({
+						content: "Last message in channel is null",
+						flags: MessageFlags.Ephemeral,
+					});
+					return;
+				}
+				query = interaction.channel.lastMessage.content.trim();
+			}
 			await interaction.reply({
 				// also partially written by basant sharma
 				content:
