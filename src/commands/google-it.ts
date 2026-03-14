@@ -19,13 +19,10 @@ export const data = new SlashCommandBuilder()
 	)
 	.addBooleanOption((option) =>
 		option
-		.setName("gpt-it")
-		.setDescription(
-				"Generate ai slop instead",
-			)
+			.setName("gpt-it")
+			.setDescription("Generate ai slop instead")
 			.setRequired(false),
-	)
-	;
+	);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	await Sentry.withIsolationScope(async (scope) => {
@@ -70,9 +67,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 				queryArg && queryArg.length > 0
 					? queryArg
 					: interaction.channel.lastMessage.content.trim();
-			await interaction.reply({ // also partially written by basant sharma
-					content: (interaction.options.getBoolean("gpt-it") ?? false) ? `https://www.chatgpt.com/?q=${encodeURIComponent(query)}` : `https://www.google.com/search?q=${encodeURIComponent(query)}`,
-					flags: MessageFlags.SuppressNotifications, // kurt wuz here
+			await interaction.reply({
+				// also partially written by basant sharma
+				content:
+					(interaction.options.getBoolean("gpt-it") ?? false)
+						? `https://www.chatgpt.com/?q=${encodeURIComponent(query)}`
+						: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+				flags: MessageFlags.SuppressNotifications, // kurt wuz here
 			});
 		} catch (error) {
 			Sentry.captureException(error);
