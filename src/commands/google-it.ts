@@ -16,7 +16,16 @@ export const data = new SlashCommandBuilder()
 				"Search query to use (defaults to last message's content if empty)",
 			)
 			.setRequired(false),
-	);
+	)
+	.addBooleanOption((option) =>
+		option
+		.setName("gpt-it")
+		.setDescription(
+				"Generate ai slop instead",
+			)
+			.setRequired(false),
+	)
+	;
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	await Sentry.withIsolationScope(async (scope) => {
