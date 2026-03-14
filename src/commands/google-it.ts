@@ -19,13 +19,10 @@ export const data = new SlashCommandBuilder()
 	)
 	.addBooleanOption((option) =>
 		option
-		.setName("gpt-it")
-		.setDescription(
-				"Generate ai slop instead",
-			)
+			.setName("gpt-it")
+			.setDescription("Generate ai slop instead")
 			.setRequired(false),
-	)
-	;
+	);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	await Sentry.withIsolationScope(async (scope) => {
