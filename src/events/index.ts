@@ -11,6 +11,7 @@ import * as bruh from "./messages/bruh";
 import * as keywords from "./messages/keywords";
 import * as explode from "./messages/explode";
 import * as lockIn from "./messages/lock-in";
+import * as bigNo from "./message-commands/big-no";
 
 interface Registerable {
 	register(client: Client<true>): void | PromiseLike<void>;
@@ -29,6 +30,7 @@ const consumers: Registerable[] = [
 	keywords,
 	explode,
 	lockIn,
+	bigNo,
 ];
 
 export function register(client: Client<true>) {
