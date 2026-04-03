@@ -4,6 +4,7 @@ import {
 	Client,
 	Events,
 	GatewayIntentBits,
+	MessageFlags,
 	Partials,
 	REST,
 	Routes,
@@ -67,11 +68,33 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 // Command interaction handler
-client.on(Events.InteractionCreate, (interaction) => {
+client.on(Events.InteractionCreate, async (interaction) => {
 	if (!interaction.isChatInputCommand()) return;
 
 	const command = commands.get(interaction.commandName);
-	command?.execute(interaction);
+	if (!command) return;
+
+	await Sentry.withIsolationScope(async () => {
+		Sentry.setTag("handler", `command:${interaction.commandName}`);
+		Sentry.setUser({ id: interaction.user.id, username: interaction.user.username });
+		Sentry.setContext("discord.interaction", {
+			id: interaction.id,
+			guildId: interaction.guildId,
+			channelId: interaction.channelId,
+			commandName: interaction.commandName,
+			options: interaction.options.data,
+		});
+		try {
+			await command.execute(interaction);
+		} catch (error) {
+			Sentry.captureException(error);
+			if (interaction.replied || interaction.deferred) {
+				await interaction.followUp({ content: "An error occurred.", flags: MessageFlags.Ephemeral }).catch(() => {});
+			} else {
+				await interaction.reply({ content: "An error occurred.", flags: MessageFlags.Ephemeral }).catch(() => {});
+			}
+		}
+	});
 });
 
 // For some reason, the program doesn't seem to stop when it gets a signal

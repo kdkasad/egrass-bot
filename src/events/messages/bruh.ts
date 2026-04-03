@@ -9,7 +9,7 @@ import {
 } from "discord.js";
 import { env } from "../../env";
 import { Guilds, Roles, Users, Channels } from "../../consts";
-import { log } from "../../logging";
+import { extractMessageContext, extractMessageUpdateContext, log, withSentryEventScope } from "../../logging";
 import { addMute, removeMute, getMutes } from "../../db";
 
 const SHORT_TIMEOUT_MS = 16700; // 16.7 seconds
@@ -17,8 +17,8 @@ const LONG_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 export function register(client: Client<true>) {
 	if (!env.DISABLE_TROLLING) {
-		client.on(Events.MessageCreate, handleNewMessage);
-		client.on(Events.MessageUpdate, handleEditMessage);
+		client.on(Events.MessageCreate, withSentryEventScope("bruh", handleNewMessage, extractMessageContext));
+		client.on(Events.MessageUpdate, withSentryEventScope("bruh", handleEditMessage, extractMessageUpdateContext));
 	}
 	handleExistingMutes(client);
 }

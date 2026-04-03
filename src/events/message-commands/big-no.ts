@@ -1,4 +1,3 @@
-import { captureException } from "@sentry/bun";
 import {
 	ApplicationCommandType,
 	ContextMenuCommandBuilder,
@@ -6,7 +5,7 @@ import {
 	MessageFlags,
 	type Client,
 } from "discord.js";
-import { log } from "../../logging";
+import { extractInteractionContext, withSentryEventScope } from "../../logging";
 
 const NO_REACTIONS: string[] = [
 	"❌",
@@ -28,33 +27,20 @@ export async function register(client: Client<true>) {
 		client.guilds.cache.map((guild) => guild.commands.create(command)),
 	);
 
-	client.on(Events.InteractionCreate, async (interaction) => {
+	client.on(Events.InteractionCreate, withSentryEventScope("big-no", async (interaction) => {
 		if (
 			interaction.isMessageContextMenuCommand() &&
 			interaction.commandName == command.name
 		) {
-			try {
-				await Promise.all(
-					NO_REACTIONS.map((emoji) =>
-						interaction.targetMessage.react(emoji),
-					),
-				);
-				await interaction.reply({
-					content: "✅",
-					flags: MessageFlags.Ephemeral,
-				});
-			} catch (error) {
-				if (error instanceof Error) {
-					captureException(error, {
-						extra: { messageId: interaction.targetMessage.id },
-					});
-					log.error(`Error reacting to message: ${error.message}`, error);
-					await interaction.reply({
-						content: `Error: ${error.message}`,
-						flags: MessageFlags.Ephemeral,
-					});
-				}
-			}
+			await Promise.all(
+				NO_REACTIONS.map((emoji) =>
+					interaction.targetMessage.react(emoji),
+				),
+			);
+			await interaction.reply({
+				content: "✅",
+				flags: MessageFlags.Ephemeral,
+			});
 		}
-	});
+	}, extractInteractionContext));
 }

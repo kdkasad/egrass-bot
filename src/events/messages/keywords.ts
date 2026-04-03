@@ -10,17 +10,15 @@ import {
 } from "discord.js";
 import { Guilds, Users } from "../../consts";
 import {
+	extractMessageContext,
+	extractMessageUpdateContext,
 	log,
-	sentryMessageEventWrapper,
-	sentryMessageUpdateEventWrapper,
+	withSentryEventScope,
 } from "../../logging";
 
 export function register(client: Client<true>) {
-	client.on(Events.MessageCreate, sentryMessageEventWrapper(onNewMessage));
-	client.on(
-		Events.MessageUpdate,
-		sentryMessageUpdateEventWrapper(onEditedMessage),
-	);
+	client.on(Events.MessageCreate, withSentryEventScope("keywords", onNewMessage, extractMessageContext));
+	client.on(Events.MessageUpdate, withSentryEventScope("keywords", onEditedMessage, extractMessageUpdateContext));
 }
 
 async function test(

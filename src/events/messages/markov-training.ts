@@ -6,11 +6,11 @@ import type {
 } from "discord.js";
 import { createMessage, deleteMessage, doInTransaction } from "../../db";
 import { addMessageToMarkov4 } from "../../markov";
-import { log } from "../../logging";
+import { extractMessageContext, log, withSentryEventScope } from "../../logging";
 
 export function register(client: Client<true>) {
-	client.on("messageCreate", handlerCreate);
-	client.on("messageDelete", handlerDelete);
+	client.on("messageCreate", withSentryEventScope("markov-training", handlerCreate, extractMessageContext));
+	client.on("messageDelete", withSentryEventScope("markov-training", handlerDelete));
 }
 
 const saveAndTrainOnMessageTransaction = doInTransaction(

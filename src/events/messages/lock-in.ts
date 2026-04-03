@@ -1,7 +1,7 @@
 import { Events, type Client, type Message } from "discord.js";
 import { env } from "../../env";
 import { ChannelCategories, Users } from "../../consts";
-import { sentryMessageEventWrapper } from "../../logging";
+import { extractMessageContext, withSentryEventScope } from "../../logging";
 
 let enabled = true;
 
@@ -12,7 +12,7 @@ export function register(client: Client<true>) {
 
 	client.on(
 		Events.MessageCreate,
-		sentryMessageEventWrapper(async (message: Message) => {
+		withSentryEventScope("lock-in", async (message: Message) => {
 			if (
 				enabled &&
 				message.author.id === Users.Sophia &&
@@ -37,6 +37,6 @@ export function register(client: Client<true>) {
 						}
 					});
 			}
-		}),
+		}, extractMessageContext),
 	);
 }

@@ -7,7 +7,7 @@ import {
 	type OmitPartialGroupDMChannel,
 	type PartialMessage,
 } from "discord.js";
-import { log } from "../../logging";
+import { extractMessageContext, extractMessageUpdateContext, log, withSentryEventScope } from "../../logging";
 import {
 	MAX_MESSAGE_CREATE_REQUEST_SIZE,
 	MAX_MSG_CONTENT_LENGTH,
@@ -19,8 +19,8 @@ const QUERY_TIMEOUT_MS = 5000;
 const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
 
 export function register(client: Client<true>) {
-	client.on("messageCreate", handleNewMessage);
-	client.on("messageUpdate", handleMessgeEdited);
+	client.on("messageCreate", withSentryEventScope("sql", handleNewMessage, extractMessageContext));
+	client.on("messageUpdate", withSentryEventScope("sql", handleMessgeEdited, extractMessageUpdateContext));
 }
 
 /**

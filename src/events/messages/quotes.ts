@@ -9,12 +9,10 @@ import {
 } from "discord.js";
 import { QuoteCategories } from "../../consts";
 import { recordQuote, UniquenessError } from "../../db";
-import { log } from "../../logging";
+import { extractMessageContext, log, withSentryEventScope } from "../../logging";
 
 export function register(client: Client<true>) {
-	client.on(Events.MessageCreate, (message) => {
-		handler(message);
-	});
+	client.on(Events.MessageCreate, withSentryEventScope("quotes", handler, extractMessageContext));
 }
 
 async function handler(message: OmitPartialGroupDMChannel<Message<boolean>>) {

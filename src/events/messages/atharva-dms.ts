@@ -6,6 +6,7 @@ import {
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
 import { Users } from "../../consts";
+import { extractMessageContext, withSentryEventScope } from "../../logging";
 import yumImage from "../../../assets/yum.gif" with { type: "file" };
 
 export const yumImageBuf = Buffer.from(
@@ -15,7 +16,7 @@ export const yumImageBuf = Buffer.from(
 );
 
 export function register(client: Client<true>) {
-	client.on("messageCreate", handleMessage);
+	client.on("messageCreate", withSentryEventScope("atharva-dms", handleMessage, extractMessageContext));
 }
 
 async function handleMessage(message: OmitPartialGroupDMChannel<Message>) {

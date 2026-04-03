@@ -8,15 +8,11 @@ import {
 	type PartialUser,
 } from "discord.js";
 import { deleteSolve, isPastAnnouncement, recordSolve } from "../../db";
-import { log } from "../../logging";
+import { extractReactionContext, log, withSentryEventScope } from "../../logging";
 
 export function register(client: Client<true>) {
-	client.on(Events.MessageReactionAdd, (reaction, user) => {
-		addHandler(reaction, user);
-	});
-	client.on(Events.MessageReactionRemove, (reaction, user) => {
-		removeHandler(reaction, user);
-	});
+	client.on(Events.MessageReactionAdd, withSentryEventScope("solves", addHandler, extractReactionContext));
+	client.on(Events.MessageReactionRemove, withSentryEventScope("solves", removeHandler, extractReactionContext));
 }
 
 async function addHandler(

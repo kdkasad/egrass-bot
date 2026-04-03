@@ -7,15 +7,11 @@ import {
 	type PartialUser,
 } from "discord.js";
 import { addReaction, removeReaction } from "../../db";
-import { log } from "../../logging";
+import { extractReactionContext, log, withSentryEventScope } from "../../logging";
 
 export function register(client: Client<true>) {
-	client.on(Events.MessageReactionAdd, (reaction, user) => {
-		addReactionHandler(reaction, user);
-	});
-	client.on(Events.MessageReactionRemove, (reaction, user) => {
-		removeReactionHandler(reaction, user);
-	});
+	client.on(Events.MessageReactionAdd, withSentryEventScope("reaction-track", addReactionHandler, extractReactionContext));
+	client.on(Events.MessageReactionRemove, withSentryEventScope("reaction-track", removeReactionHandler, extractReactionContext));
 }
 
 async function addReactionHandler(

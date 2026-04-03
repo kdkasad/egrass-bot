@@ -10,29 +10,40 @@ import {
 	type Interaction,
 } from "discord.js";
 import { getRecapStats, type RecapStats } from "../../db";
-import { log } from "../../logging";
+import {
+	extractInteractionContext,
+	log,
+	withSentryEventScope,
+} from "../../logging";
 import { Channels } from "../../consts";
 
 export function register(client: Client<true>) {
-	client.on(Events.InteractionCreate, async (interaction) => {
-		try {
-			handleInteraction(interaction);
-		} catch (error) {
-			log.error("Error processing getRecap interaction", error);
-			if (interaction.isRepliable() && error instanceof Error) {
-				if (interaction.deferred || interaction.replied) {
-					await interaction.editReply({
-						content: `Error: ${error.message}`,
-					});
-				} else {
-					await interaction.reply({
-						content: `Error: ${error.message}`,
-						flags: MessageFlags.Ephemeral,
-					});
+	client.on(
+		Events.InteractionCreate,
+		withSentryEventScope(
+			"recap",
+			async (interaction) => {
+				try {
+					await handleInteraction(interaction);
+				} catch (error) {
+					log.error("Error processing getRecap interaction", error);
+					if (interaction.isRepliable() && error instanceof Error) {
+						if (interaction.deferred || interaction.replied) {
+							await interaction.editReply({
+								content: `Error: ${error.message}`,
+							});
+						} else {
+							await interaction.reply({
+								content: `Error: ${error.message}`,
+								flags: MessageFlags.Ephemeral,
+							});
+						}
+					}
 				}
-			}
-		}
-	});
+			},
+			extractInteractionContext,
+		),
+	);
 }
 
 async function handleInteraction(interaction: Interaction) {
