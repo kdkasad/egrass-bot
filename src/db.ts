@@ -6,7 +6,6 @@ import {
 	MessageReaction,
 	MessageReferenceType,
 	type Message,
-	type PartialGuildMember,
 	type PartialMessage,
 	type PartialUser,
 	type User,
@@ -846,11 +845,11 @@ export function addOrUpdateMember(member: GuildMember) {
 		.run(member.id, member.displayName, member.user.username);
 }
 
-export function deleteMember(member: GuildMember | PartialGuildMember) {
-	return db
-		.query<void, [MembersRow["id"]]>(`DELETE FROM members WHERE id = ?`)
-		.run(member.id);
-}
+// export function deleteMember(member: GuildMember | PartialGuildMember) {
+// 	return db
+// 		.query<void, [MembersRow["id"]]>(`DELETE FROM members WHERE id = ?`)
+// 		.run(member.id);
+// }
 
 export function recordSqlResponse(
 	queryMessage: Message,

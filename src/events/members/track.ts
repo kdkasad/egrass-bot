@@ -1,5 +1,5 @@
 import type { Client } from "discord.js";
-import { addOrUpdateMember, deleteMember, doInTransaction } from "../../db";
+import { addOrUpdateMember, doInTransaction } from "../../db";
 import { Guilds } from "../../consts";
 import { log } from "../../logging";
 
@@ -29,7 +29,7 @@ export function register(client: Client<true>) {
 			});
 		})
 		.on("guildMemberRemove", (member) => {
-			deleteMember(member);
-			log.info("Guild member deleted", { name: member.displayName });
+			// deleteMember(member);
+			log.info("Guild member left", { name: member.displayName });
 		});
 }
