@@ -10,16 +10,43 @@ import type {
 	PartialUser,
 	User,
 } from "discord.js";
-import { getLogger } from "log4js";
+import { configure, getLogger, type AppenderModule } from "log4js";
 import * as Sentry from "@sentry/bun";
+import { inspect } from "node:util";
+
+// Log4JS appender to send logs to Sentry
+const sentryAppender: AppenderModule = {
+	configure: () => (event) => {
+		const levelMap: Record<string, keyof typeof Sentry.logger> = {
+			TRACE: "trace",
+			DEBUG: "debug",
+			INFO: "info",
+			WARN: "warn",
+			ERROR: "error",
+			FATAL: "fatal",
+		};
+		const method = levelMap[event.level.levelStr];
+		if (!method) return;
+		const message = event.data
+			.map((d: unknown) => (typeof d === "string" ? d : inspect(d, { depth: 4 })))
+			.join(" ");
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		Sentry.logger[method](message as any);
+	},
+};
+
+const level = Bun.env.NODE_ENV === "production" ? "info" : "debug";
+configure({
+	appenders: {
+		stdout: { type: "stdout" },
+		sentry: { type: sentryAppender },
+	},
+	categories: {
+		default: { appenders: ["stdout", "sentry"], level },
+	},
+});
 
 export const log = getLogger();
-if (Bun.env.NODE_ENV === "production") {
-	log.level = "info";
-} else {
-	log.level = "debug";
-	log.debug("Debug logging enabled");
-}
 
 // Use log4js for uncaught exceptions and promise rejections
 process.on("uncaughtException", (error) => {
