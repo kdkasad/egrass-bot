@@ -48,7 +48,7 @@ function test(message: Message): boolean {
 			: message.channelId !== Channels.Announcements) &&
 		message.inGuild() &&
 		message.content.match(
-			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b6+7+\b)/i,
+			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b(6+7+)+\b)/i,
 		) !== null
 	);
 }
