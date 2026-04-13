@@ -8,7 +8,7 @@ import {
 	type PartialMessage,
 } from "discord.js";
 import { env } from "../../env";
-import { Guilds, Roles, Users, Channels } from "../../consts";
+import { Guilds, Roles, Channels } from "../../consts";
 import { extractMessageContext, extractMessageUpdateContext, log, withSentryEventScope } from "../../logging";
 import { addMute, removeMute, getMutes } from "../../db";
 
