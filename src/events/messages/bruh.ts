@@ -43,7 +43,6 @@ async function handleExistingMutes(client: Client<true>) {
 function test(message: Message): boolean {
 	return (
 		!message.author.bot &&
-		message.author.id !== Users.Kian &&
 		(message.channel.isThread()
 			? message.channel.parentId !== Channels.Announcements
 			: message.channelId !== Channels.Announcements) &&
@@ -71,7 +70,7 @@ async function handleNewMessage(message: Message) {
 		await Promise.all([
 			message.react("🥀"),
 			message.reply(
-				Math.random() < 0.01
+				Math.random() < 0.067
 					? "https://tenor.com/view/bee-movie-layton-t-montgomery-monty-montgomery-67-6-7-gif-9758470031245276788"
 					: "OMG HAHA SO FUNNY SIX AND SEVEN ARE CONSECUTIVE DIGITS 🤯",
 			),
