@@ -3,114 +3,66 @@ import {
 	Guild,
 	Message,
 	User,
+	userMention,
 	type Client,
-	type OmitPartialGroupDMChannel,
-	type PartialMessage,
 } from "discord.js";
 import { env } from "../../env";
-import { Guilds, Roles, Channels } from "../../consts";
-import { extractMessageContext, extractMessageUpdateContext, log, withSentryEventScope } from "../../logging";
-import { addMute, removeMute, getMutes } from "../../db";
+import { Guilds, Roles, Users, Channels } from "../../consts";
+import { log } from "../../logging";
 
-const SHORT_TIMEOUT_MS = 16700; // 16.7 seconds
-const LONG_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const TIMEOUT_MS = 6700; // 6.7 seconds
 
 export function register(client: Client<true>) {
 	if (!env.DISABLE_TROLLING) {
-		client.on(Events.MessageCreate, withSentryEventScope("bruh", handleNewMessage, extractMessageContext));
-		client.on(Events.MessageUpdate, withSentryEventScope("bruh", handleEditMessage, extractMessageUpdateContext));
+		client.on(Events.MessageCreate, handleMessage);
 	}
-	handleExistingMutes(client);
+	removeAllPunishments(client);
 }
 
-async function handleExistingMutes(client: Client<true>) {
-	const now = new Date();
-	await Promise.all(
-		getMutes().map(async (mute) => {
-			if (mute.expiresAt < now) {
-				await unmute(mute.userId, client);
-			} else {
-				const millisUntilExpiry = mute.expiresAt.getTime() - Date.now();
-				setTimeout(
-					() => unmute(mute.userId, client),
-					millisUntilExpiry,
-				);
-			}
-		}),
-	);
+async function removeAllPunishments(client: Client<true>) {
+	const guild = await client.guilds.fetch(Guilds.Egrass);
+	const role = await guild.roles.fetch(Roles.Punishment);
+	if (!role) throw new Error("Punishment role not found");
+	await Promise.all(role.members.map((member) => member.roles.remove(role)));
 }
 
-function test(message: Message): boolean {
-	return (
+async function handleMessage(message: Message) {
+	if (
 		!message.author.bot &&
-		(message.channel.isThread()
-			? message.channel.parentId !== Channels.Announcements
-			: message.channelId !== Channels.Announcements) &&
+		message.author.id !== Users.Kian &&
+		message.channelId !== Channels.Announcements &&
 		message.inGuild() &&
 		message.content.match(
-			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b(6+7+)+\b)/i,
-		) !== null
-	);
-}
-
-async function handleEditMessage(
-	oldmsg: OmitPartialGroupDMChannel<Message | PartialMessage>,
-	newmsg: Message,
-) {
-	if (oldmsg.partial) {
-		oldmsg = await oldmsg.fetch();
-	}
-	if (!test(oldmsg)) {
-		await handleNewMessage(newmsg);
-	}
-}
-
-async function handleNewMessage(message: Message) {
-	if (test(message)) {
+			/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b6+7+\b)/i,
+		)
+	) {
 		await Promise.all([
 			message.react("🥀"),
 			message.reply(
-				Math.random() < 0.067
+				Math.random() < 0.01
 					? "https://tenor.com/view/bee-movie-layton-t-montgomery-monty-montgomery-67-6-7-gif-9758470031245276788"
 					: "OMG HAHA SO FUNNY SIX AND SEVEN ARE CONSECUTIVE DIGITS 🤯",
 			),
-			mute(message.author, message.guild!),
+			punishUser(message.author, message.guild),
 		]);
-	}
-}
-
-async function mute(user: User, guild: Guild) {
-	try {
-		const member = await guild.members.fetch(user);
-		await member.roles.add(Roles.Mute, "you know what you did");
-
-		// 1/667 chance for a whole day timeout heheheha
-		const useDayTimeout = Math.random() < 1 / 667;
-		const expiresAt = new Date(
-			Date.now() + (useDayTimeout ? LONG_TIMEOUT_MS : SHORT_TIMEOUT_MS),
-		);
-		addMute(user.id, expiresAt);
-		setTimeout(
-			() => unmute(user.id, guild.client),
-			expiresAt.getTime() - Date.now(),
-		);
-		log.debug("User muted", {
-			userId: user.id,
-			expiresAt,
+	} else if (
+		!message.author.bot &&
+		message.channelId !== Channels.Announcements &&
+		message.inGuild() &&
+		message.content.match(/^(?=.*discord)(?=.*mod)|cailey/i)
+	) {
+		await message.reply({
+			content: `Looks like someone mentioned you ${userMention(Users.Cailey)}$`,
 		});
-	} catch (error) {
-		log.error("Failed to mute user", { userId: user.id, error });
 	}
 }
 
-async function unmute(userId: string, client: Client<true>) {
-	try {
-		const guild = await client.guilds.fetch(Guilds.Egrass);
-		const member = await guild.members.fetch(userId);
-		await member.roles.remove(Roles.Mute);
-		removeMute(userId);
-		log.debug("User ummuted", { userId });
-	} catch (error) {
-		log.error(`Failed to remove mute`, { userId, error });
-	}
+async function punishUser(user: User, guild: Guild) {
+	const member = await guild.members.fetch(user);
+	await member.roles.add(Roles.Punishment, "you know what you did");
+	log.debug("Punishment role added to user", { userId: user.id });
+	setTimeout(async () => {
+		await member.roles.remove(Roles.Punishment);
+		log.debug("Punishment role removed from user", { userId: user.id });
+	}, TIMEOUT_MS);
 }

@@ -3,6 +3,7 @@ export enum Users {
 	Kian = "753840846549418024",
 	Atharva = "1007790710042394624",
 	Sophia = "592551894337978369",
+	Cailey = "278316954585137152",
 }
 
 export enum Roles {
