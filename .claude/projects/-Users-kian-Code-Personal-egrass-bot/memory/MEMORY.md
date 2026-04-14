@@ -1,0 +1,1 @@
+- [Preserve existing comments](feedback_keep_comments.md) — Don't remove comments; user values them for readability
