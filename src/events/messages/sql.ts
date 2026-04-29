@@ -7,20 +7,39 @@ import {
 	type OmitPartialGroupDMChannel,
 	type PartialMessage,
 } from "discord.js";
-import { extractMessageContext, extractMessageUpdateContext, log, withSentryEventScope } from "../../logging";
+import {
+	extractMessageContext,
+	extractMessageUpdateContext,
+	log,
+	withSentryEventScope,
+} from "../../logging";
 import {
 	MAX_MESSAGE_CREATE_REQUEST_SIZE,
 	MAX_MSG_CONTENT_LENGTH,
 } from "../../consts";
 import { type QueryWorkerResult } from "../../utils";
 import { getResponseToSqlQuery, recordSqlResponse } from "../../db";
+import {
+	QueryResultFormat,
+	type QueryWorkerRequest,
+} from "../../workers/types";
 
 const QUERY_TIMEOUT_MS = 5000;
 const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
 
 export function register(client: Client<true>) {
-	client.on("messageCreate", withSentryEventScope("sql", handleNewMessage, extractMessageContext));
-	client.on("messageUpdate", withSentryEventScope("sql", handleMessgeEdited, extractMessageUpdateContext));
+	client.on(
+		"messageCreate",
+		withSentryEventScope("sql", handleNewMessage, extractMessageContext),
+	);
+	client.on(
+		"messageUpdate",
+		withSentryEventScope(
+			"sql",
+			handleMessageEdited,
+			extractMessageUpdateContext,
+		),
+	);
 }
 
 /**
@@ -51,13 +70,18 @@ async function messageIsSqlCandidate(
 }
 
 /** Returns the SQL query from the message, or null if it does not contain one */
-function getQueryFromMessage(message: Message<boolean>): string | null {
+function getQueryFromMessage(
+	message: Message<boolean>,
+): QueryWorkerRequest | null {
 	const match = message.content.match(/```sql\n(?<query>.*?)\n```/is);
 	if (!match || !match.groups) {
 		// Message doesn't contain a SQL code block
 		return null;
 	}
-	return match.groups.query;
+	const format = message.content.trimEnd().toLowerCase().endsWith("json")
+		? QueryResultFormat.JSON
+		: QueryResultFormat.Table;
+	return { sql: match.groups.query, format };
 }
 
 async function handleNewMessage(
@@ -71,7 +95,11 @@ async function handleNewMessage(
 		return;
 	}
 
-	const responsePayload = await runQueryAndPrepareResponse(query, message);
+	const responsePayload = await runQueryAndPrepareResponse(
+		query.sql,
+		message,
+		query.format,
+	);
 	const reply = await message.reply(responsePayload);
 	recordSqlResponse(message, reply);
 }
@@ -80,6 +108,7 @@ async function handleNewMessage(
 async function runQueryAndPrepareResponse(
 	query: string,
 	message: Message,
+	format: QueryResultFormat,
 ): Promise<MessageReplyOptions & MessageEditOptions> {
 	log.info("SQL query requested", {
 		query,
@@ -87,22 +116,30 @@ async function runQueryAndPrepareResponse(
 	});
 
 	try {
-		const table = await executeReadonlyQuery(query, QUERY_TIMEOUT_MS);
+		const result = await executeReadonlyQuery(
+			query,
+			QUERY_TIMEOUT_MS,
+			format,
+		);
 		let replyPayload: MessageReplyOptions & MessageEditOptions;
-		if (table === null) {
+		if (result === null) {
 			replyPayload = { content: `Query returned 0 rows` };
 		} else {
-			const markdown = "```\n" + table + "\n```";
-			if (table.length > MAX_ATTACHMENT_SIZE) {
+			const markdown = "```\n" + result + "\n```";
+			if (result.length > MAX_ATTACHMENT_SIZE) {
 				replyPayload = {
-					content: `⚠️ Results exceed maximum attachment size (${table.length}>${MAX_ATTACHMENT_SIZE})`,
+					content: `⚠️ Results exceed maximum attachment size (${result.length}>${MAX_ATTACHMENT_SIZE})`,
 				};
 			} else if (markdown.length > MAX_MSG_CONTENT_LENGTH) {
+				const attachmentFilename: Record<QueryResultFormat, string> = {
+					[QueryResultFormat.JSON]: "results.json",
+					[QueryResultFormat.Table]: "results.txt",
+				} as const;
 				replyPayload = {
 					content: `ℹ️ Results exceed maximum message content length (${markdown.length}>${MAX_MSG_CONTENT_LENGTH}); using attachment`,
 					files: [
-						new AttachmentBuilder(Buffer.from(table), {
-							name: "results.txt",
+						new AttachmentBuilder(Buffer.from(result), {
+							name: attachmentFilename[format],
 						}),
 					],
 				};
@@ -145,6 +182,7 @@ class TimeoutError extends Error {
 async function executeReadonlyQuery(
 	sql: string,
 	timeoutMs: number,
+	format: QueryResultFormat,
 ): Promise<string | null> {
 	// Create worker
 	const worker = new Worker(
@@ -152,7 +190,7 @@ async function executeReadonlyQuery(
 	);
 	log.debug("SQL worker spawned");
 	// Send query to worker
-	worker.postMessage(sql);
+	worker.postMessage({ sql, format } satisfies QueryWorkerRequest);
 	const result = await new Promise<QueryWorkerResult>((resolve, reject) => {
 		// Kill worker and reject promise after timeout elapses
 		const timer = setTimeout(() => {
@@ -185,7 +223,7 @@ async function executeReadonlyQuery(
 	}
 }
 
-async function handleMessgeEdited(
+async function handleMessageEdited(
 	oldMessage: OmitPartialGroupDMChannel<Message> | PartialMessage,
 	newMessage: OmitPartialGroupDMChannel<Message>,
 ) {
@@ -204,14 +242,16 @@ async function handleMessgeEdited(
 	}
 
 	// Get queries from old and new messages
-	const oldQuery = getQueryFromMessage(oldMessage);
+	const oldQuery = getQueryFromMessage(oldMessage)!;
 	const newQuery = getQueryFromMessage(newMessage);
 
 	// If the new message doesn't contain a query, there's nothing to do
 	if (!newQuery) return;
 
 	// If the query hasn't changed, we don't need to do anything
-	if (oldQuery === newQuery) return;
+	if (oldQuery.sql === newQuery.sql && oldQuery.format === newQuery.format) {
+		return;
+	}
 
 	// Get the original response message so we can edit it
 	let originalResponse: Message;
@@ -234,8 +274,9 @@ async function handleMessgeEdited(
 
 	// Run the query
 	const responsePayload = await runQueryAndPrepareResponse(
-		newQuery,
+		newQuery.sql,
 		newMessage,
+		newQuery.format,
 	);
 
 	// Edit original response with new results

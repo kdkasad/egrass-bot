@@ -4,6 +4,7 @@ import { rodb } from "../db";
 import { log } from "../logging";
 import type { QueryWorkerResult } from "../utils";
 import stringWidth from "string-width";
+import { QueryResultFormat, type QueryWorkerRequest } from "./types";
 
 declare const self: Worker;
 
@@ -11,7 +12,7 @@ declare const self: Worker;
 self.addEventListener(
 	"message",
 	(event) => {
-		const sql = event.data as string;
+		const { sql, format } = event.data as QueryWorkerRequest;
 		try {
 			const query = rodb.prepare<Record<string, unknown>, []>(sql);
 			const results = query.all();
@@ -21,7 +22,7 @@ self.addEventListener(
 					table:
 						results.length === 0
 							? null
-							: await resultsAsBoxDrawingTable(results),
+							: await formatResults(results, format),
 				} satisfies QueryWorkerResult);
 			})();
 		} catch (thrown) {
@@ -37,10 +38,25 @@ self.addEventListener(
 	{ once: true },
 );
 
-// TODO: handle cells with line breaks
-async function resultsAsBoxDrawingTable(
+type Formatter = (rows: Record<string, unknown>[]) => Promise<string>;
+
+async function formatResults(
 	rows: Record<string, unknown>[],
+	format: QueryResultFormat,
 ): Promise<string> {
+	const formatters: Record<QueryResultFormat, Formatter> = {
+		[QueryResultFormat.Table]: resultsAsBoxDrawingTable,
+		[QueryResultFormat.JSON]: resultsAsJSON,
+	};
+	return formatters[format](rows);
+}
+
+const resultsAsJSON: Formatter = async (rows) => {
+	return JSON.stringify(rows);
+};
+
+// TODO: handle cells with line breaks
+const resultsAsBoxDrawingTable: Formatter = async (rows) => {
 	const CHUNK_SIZE = 100;
 
 	if (rows.length === 0) throw new Error("Must contain at least one row");
@@ -141,4 +157,4 @@ async function resultsAsBoxDrawingTable(
 	output.push(lines.bottom);
 
 	return output.join("\n");
-}
+};
