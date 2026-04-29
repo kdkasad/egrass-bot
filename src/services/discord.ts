@@ -175,6 +175,37 @@ export class DiscordService extends Feature {
 	}
 
 	/**
+	 * Registers a single Discord event with a root Sentry span and fan-out to
+	 * all subscribers. Extracted so TypeScript can reason about K at a time
+	 * rather than across the whole union.
+	 */
+	#registerEvent<K extends keyof ClientEvents>(ourName: string, descriptor: EventDescriptor<K>) {
+		this.client.on(descriptor.discordJsName, (...d: ClientEvents[K]) => {
+			Sentry.startSpan(
+				{
+					parentSpan: null,
+					name: descriptor.spanName,
+					op: "discord.event",
+					attributes: descriptor.attributes?.(...d),
+				},
+				async () => {
+					descriptor.logger(...d);
+					const handlers = this.handlers[ourName as keyof Events] ?? [];
+					await Promise.all(
+						handlers.map((handler) =>
+							Sentry.withIsolationScope(() =>
+								// Safe by construction: ourName and descriptor come from
+								// the same events entry, but TypeScript can't prove it.
+								(handler as (...args: ClientEvents[K]) => Promise<void>)(...d),
+							),
+						),
+					);
+				},
+			);
+		});
+	}
+
+	/**
 	 * Initial client setup that happens in the background after logging in to the Discord Gateway.
 	 */
 	@traced()
@@ -187,29 +218,7 @@ export class DiscordService extends Feature {
 
 		// Establish event handlers
 		for (const [ourName, descriptor] of Object.entries(events)) {
-			this.client.on(descriptor.discordJsName, (...d) => {
-				Sentry.startSpan(
-					{
-						parentSpan: null,
-						name: descriptor.spanName,
-						op: "discord.event",
-						attributes: descriptor.attributes(...d),
-					},
-					async () => {
-						// Log the event
-						descriptor.logger(...d);
-						// Get the subscriber handlers
-						const handlers = this.handlers[ourName as keyof Events] ?? [];
-						await Promise.all(
-							handlers.map((handler) =>
-								Sentry.withIsolationScope(() => {
-									return handler(...d);
-								}),
-							),
-						);
-					},
-				);
-			});
+			this.#registerEvent(ourName, descriptor as EventDescriptor<any>);
 			Sentry.logger.info(Sentry.logger.fmt`Registered event handler for ${ourName}`);
 		}
 	}
