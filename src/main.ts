@@ -6,6 +6,7 @@ import {
 	SignalHandlerService,
 	ExplodeService,
 	TrackingService,
+	MarkovService,
 } from "./services";
 
 async function main() {
@@ -36,6 +37,7 @@ async function main() {
 	const signalHandler = new SignalHandlerService(discord, database);
 	const explode = new ExplodeService(env, discord);
 	const tracking = new TrackingService(discord, database);
+	const markov = new MarkovService(env, discord, database);
 }
 
 main();

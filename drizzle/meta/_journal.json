@@ -8,6 +8,13 @@
       "when": 1777435612255,
       "tag": "0000_woozy_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1777490674720,
+      "tag": "0001_handy_namora",
+      "breakpoints": true
     }
   ]
 }

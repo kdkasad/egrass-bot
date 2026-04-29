@@ -10,7 +10,8 @@
 	"scripts": {
 		"dev": "bun run -b src/index.ts",
 		"watch": "bun run -b --watch src/index.ts",
-		"lint": "bun run -b eslint"
+		"lint": "bun run -b eslint",
+		"db:generate": "drizzle-kit generate"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",

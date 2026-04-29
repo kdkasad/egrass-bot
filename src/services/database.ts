@@ -62,3 +62,5 @@ export class DatabaseService extends Service {
 		Sentry.logger.info("Database connections closed");
 	}
 }
+
+export type Transaction = Parameters<Parameters<AppDB["transaction"]>[0]>[0];

@@ -16,7 +16,7 @@ export class Feature extends Service {
 	}
 
 	protected isEnabled() {
-		return this.env.vars.DISABLED_FEATURES.has(this._name);
+		return !this.env.vars.DISABLED_FEATURES.has(this._name);
 	}
 
 	protected static allEnabled(services: Service[]): boolean {
