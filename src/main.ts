@@ -5,6 +5,7 @@ import {
 	DatabaseService,
 	SignalHandlerService,
 	ExplodeService,
+	TrackingService,
 } from "./services";
 
 async function main() {
@@ -34,6 +35,7 @@ async function main() {
 	const discord = await DiscordService.new(env);
 	const signalHandler = new SignalHandlerService(discord, database);
 	const explode = new ExplodeService(env, discord);
+	const tracking = new TrackingService(discord, database);
 }
 
 main();

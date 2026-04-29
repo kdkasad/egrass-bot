@@ -9,7 +9,7 @@ export class ExplodeService extends Feature {
 	constructor(env: EnvService, discord: DiscordService) {
 		super(env);
 		discord.subscribe("message:create", async (msg) => {
-			return Sentry.startSpan({ name: "Explode", op: "event.handler" }, async () =>
+			return Sentry.startSpan({ name: "explode", op: "event.handler" }, async () =>
 				this.handleMessage(msg),
 			);
 		});

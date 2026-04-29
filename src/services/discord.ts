@@ -25,7 +25,7 @@ interface EventDescriptor<K extends keyof ClientEvents> {
 const events = {
 	"message:create": {
 		discordJsName: "messageCreate",
-		spanName: "Message created",
+		spanName: "message created",
 		attributes: (msg) => ({
 			"discord.message.id": msg.id,
 			"discord.channel.id": msg.channelId,
@@ -52,6 +52,34 @@ const events = {
 			);
 		},
 	} satisfies EventDescriptor<"messageCreate">,
+	"message:delete": {
+		discordJsName: "messageDelete",
+		spanName: "message deleted",
+		attributes: (msg) => ({
+			"discord.message.id": msg.id,
+			"discord.channel.id": msg.channelId,
+			"discord.channel.type": ChannelType[msg.channel.type],
+			"discord.user.id": msg.author?.id ?? "unknown",
+			"discord.guild.id": msg.guildId ?? "none",
+		}),
+		logger: (msg) =>
+			Sentry.logger.info(
+				"Message deleted",
+				flatten({
+					message: { id: msg.id },
+					channel: {
+						id: msg.channel.id,
+						name: msg.channel.isDMBased() ? "DM" : msg.channel.name,
+						type: ChannelType[msg.channel.type],
+					},
+					author: {
+						id: msg.author?.id ?? "unknown",
+						name: msg.author?.displayName ?? "unknown",
+						bot: msg.author?.bot ?? "unknown",
+					},
+				}),
+			),
+	} satisfies EventDescriptor<"messageDelete">,
 } as const satisfies Record<string, unknown>;
 
 // Maps our event names to the type of the data for that event

@@ -3,3 +3,4 @@ export { DiscordService } from "./discord";
 export { DatabaseService } from "./database";
 export { SignalHandlerService } from "./signals";
 export { ExplodeService } from "./explode";
+export { TrackingService } from "./tracking";
