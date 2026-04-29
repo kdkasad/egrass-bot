@@ -5,6 +5,11 @@ import {
 	ActivityType,
 	type ClientEvents,
 	ChannelType,
+	type ChatInputApplicationCommandData,
+	type JSONEncodable,
+	type RESTPostAPIChatInputApplicationCommandsJSONBody,
+	ChatInputCommandInteraction,
+	InteractionType,
 } from "discord.js";
 import * as Sentry from "@sentry/bun";
 import { Feature } from "../utils/service";
@@ -140,6 +145,7 @@ export class DiscordService extends Feature {
 
 	/**
 	 * Private constructor, used to construct class once ready client is created.
+	 * Use {@link DiscordService.new()} to create a new DiscordService.
 	 */
 	private constructor(env: EnvService, client: Client<true>) {
 		super(env);
@@ -169,7 +175,7 @@ export class DiscordService extends Feature {
 			client.login(env.vars.DISCORD_BOT_TOKEN);
 			const ds = new DiscordService(env, await readyClient);
 			Sentry.logger.info("Discord client connected");
-			ds.initialSetup(); // start in background
+			await ds.#initialSetup();
 			return ds;
 		});
 	}
@@ -209,7 +215,7 @@ export class DiscordService extends Feature {
 	 * Initial client setup that happens in the background after logging in to the Discord Gateway.
 	 */
 	@traced()
-	private async initialSetup() {
+	async #initialSetup() {
 		// Set status to "watching you"
 		this.client.user.setActivity({
 			type: ActivityType.Watching,
@@ -221,6 +227,16 @@ export class DiscordService extends Feature {
 			this.#registerEvent(ourName, descriptor as EventDescriptor<any>);
 			Sentry.logger.info(Sentry.logger.fmt`Registered event handler for ${ourName}`);
 		}
+
+		// Remove all registered commands
+		await Promise.all(
+			this.client.guilds.cache.values().map(async (guild) => {
+				await guild.commands.set([]);
+				Sentry.logger.info("Removed commands from guild", {
+					"guild.id": guild.id,
+				});
+			}),
+		);
 	}
 
 	/**
@@ -235,6 +251,53 @@ export class DiscordService extends Feature {
 			const idx = list.indexOf(handler);
 			if (idx !== -1) list.splice(idx, 1);
 		};
+	}
+
+	@traced()
+	async registerSlashCommand(
+		command: JSONEncodable<RESTPostAPIChatInputApplicationCommandsJSONBody>,
+		handler: (interaction: ChatInputCommandInteraction) => Promise<void>,
+	) {
+		const commandName = command.toJSON().name;
+		// Register command in all guilds
+		await Promise.all(
+			this.client.guilds.cache.values().map(async (guild) => {
+				const metadata = {
+					"command.name": command.toJSON().name,
+					"guild.id": guild.id,
+					"guild.name": guild.name,
+				};
+				try {
+					await guild.commands.create(command);
+					Sentry.logger.info("Registered command with guild", metadata);
+				} catch (e) {
+					Sentry.captureException(e);
+					Sentry.logger.error("Failed to register command", metadata);
+				}
+			}),
+		);
+		// Create interaction handler
+		this.client.on("interactionCreate", async (interaction) => {
+			Sentry.startSpan(
+				{
+					parentSpan: null,
+					name: "interaction created",
+					op: "discord.event",
+					attributes: {
+						"interaction.id": interaction.id,
+						"interaction.type": InteractionType[interaction.type],
+					},
+				},
+				async () => {
+					if (
+						interaction.isChatInputCommand() &&
+						interaction.commandName == commandName
+					) {
+						return Sentry.withIsolationScope(() => handler(interaction));
+					}
+				},
+			);
+		});
 	}
 
 	@traced()

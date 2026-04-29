@@ -85,7 +85,7 @@ export const markov4 = sqliteTable(
 	{
 		message_id: text("message_id")
 			.notNull()
-			.references(() => messages.id),
+			.references(() => messages.id, { onDelete: "cascade" }),
 		word1: text("word1"),
 		word2: text("word2"),
 		word3: text("word3"),
