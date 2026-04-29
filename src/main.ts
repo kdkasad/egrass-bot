@@ -1,5 +1,11 @@
 import * as Sentry from "@sentry/bun";
-import { EnvService, DiscordService, SignalHandlerService, ExplodeService } from "./services";
+import {
+	EnvService,
+	DiscordService,
+	DatabaseService,
+	SignalHandlerService,
+	ExplodeService,
+} from "./services";
 
 async function main() {
 	Sentry.init({
@@ -24,8 +30,9 @@ async function main() {
 	});
 
 	const env = new EnvService();
+	const database = await DatabaseService.new();
 	const discord = await DiscordService.new(env);
-	const signalHandler = new SignalHandlerService(discord);
+	const signalHandler = new SignalHandlerService(discord, database);
 	const explode = new ExplodeService(env, discord);
 }
 

@@ -1,4 +1,5 @@
 export { EnvService } from "./env";
 export { DiscordService } from "./discord";
+export { DatabaseService } from "./database";
 export { SignalHandlerService } from "./signals";
 export { ExplodeService } from "./explode";
