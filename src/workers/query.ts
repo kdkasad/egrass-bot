@@ -1,10 +1,8 @@
 // Worker to execute an arbitrary read-only query against the database.
 
-import { rodb } from "../db";
-import { log } from "../logging";
-import type { QueryWorkerResult } from "../utils";
+import { Database } from "bun:sqlite";
+import { type QueryWorkerResult, type QueryWorkerRequest, QueryResultFormat } from "../types/query";
 import stringWidth from "string-width";
-import { QueryResultFormat, type QueryWorkerRequest } from "./types";
 
 declare const self: Worker;
 
@@ -12,22 +10,20 @@ declare const self: Worker;
 self.addEventListener(
 	"message",
 	(event) => {
-		const { sql, format } = event.data as QueryWorkerRequest;
+		const { sql, format, dbFile } = event.data as QueryWorkerRequest;
+		const rodb = new Database(dbFile, { readonly: true, readwrite: false });
 		try {
 			const query = rodb.prepare<Record<string, unknown>, []>(sql);
 			const results = query.all();
 			(async () => {
 				self.postMessage({
 					status: "success",
-					table:
-						results.length === 0
-							? null
-							: await formatResults(results, format),
+					formattedResult:
+						results.length === 0 ? null : await formatResults(results, format),
 				} satisfies QueryWorkerResult);
 			})();
 		} catch (thrown) {
-			const error =
-				thrown instanceof Error ? thrown : new Error(String(thrown));
+			const error = thrown instanceof Error ? thrown : new Error(String(thrown));
 			self.postMessage({
 				status: "error",
 				error,
@@ -92,12 +88,8 @@ const resultsAsBoxDrawingTable: Formatter = async (rows) => {
 	});
 
 	// Helper to create row lines
-	const buildLine = (
-		left: string,
-		mid: string,
-		right: string,
-		fill: string,
-	) => left + widths.map((w) => fill.repeat(w)).join(mid) + right;
+	const buildLine = (left: string, mid: string, right: string, fill: string) =>
+		left + widths.map((w) => fill.repeat(w)).join(mid) + right;
 
 	// Helper to center text (for headers)
 	const center = (text: string, width: number) => {
@@ -108,7 +100,6 @@ const resultsAsBoxDrawingTable: Formatter = async (rows) => {
 
 	// Helper to pad text (for data - left aligned)
 	const pad = (text: string, width: number) => {
-		log.debug("pad", { text, width });
 		return " " + text + " ".repeat(width - stringWidth(text) - 1);
 	};
 
@@ -130,18 +121,10 @@ const resultsAsBoxDrawingTable: Formatter = async (rows) => {
 	// termination events
 	await new Promise<void>((resolve) => {
 		const processChunk = (start: number) => {
-			for (
-				let i = start;
-				i < rows.length && i < start + CHUNK_SIZE;
-				i++
-			) {
+			for (let i = start; i < rows.length && i < start + CHUNK_SIZE; i++) {
 				output.push(
 					"│" +
-						headers
-							.map((h, j) =>
-								pad(String(rows[i][h] ?? ""), widths[j]),
-							)
-							.join("│") +
+						headers.map((h, j) => pad(String(rows[i][h] ?? ""), widths[j])).join("│") +
 						"│",
 				);
 			}

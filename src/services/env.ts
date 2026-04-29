@@ -5,14 +5,8 @@ import { Service } from "../utils/service";
 
 const schema = z.object({
 	DISCORD_BOT_TOKEN: z.string(),
-	DISCORD_CLIENT_ID: z.string(),
-	DISABLE_NEETCODE_ANNOUNCEMENTS: z.coerce.boolean().default(false),
-	MINECRAFT_RCON_HOST: z.string().optional(),
-	MINECRAFT_RCON_PORT: z.coerce.number().optional(),
-	MINECRAFT_RCON_PASSWORD: z.string().optional(),
-	DISABLE_TROLLING: z.coerce.boolean().default(false),
-	DISABLE_LOCK_IN: z.coerce.boolean().default(false),
 	SENTRY_DSN: z.url(),
+	DATABASE_FILE: z.string(),
 	DISABLED_FEATURES: z
 		.string()
 		.default("")
