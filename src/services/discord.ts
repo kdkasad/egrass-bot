@@ -80,6 +80,48 @@ const events = {
 				}),
 			),
 	} satisfies EventDescriptor<"messageDelete">,
+	"reaction:create": {
+		discordJsName: "messageReactionAdd",
+		spanName: "reaction added",
+		attributes: (react, user) => ({
+			"discord.message.id": react.message.id,
+			"discord.user.id": user.id,
+		}),
+		logger: (react, user) =>
+			Sentry.logger.info(
+				"Reaction added",
+				flatten({
+					emoji: react.emoji.name,
+					message: { id: react.message.id },
+					user: {
+						id: user.id,
+						name: user.displayName,
+						bot: user.bot,
+					},
+				}),
+			),
+	} satisfies EventDescriptor<"messageReactionAdd">,
+	"reaction:delete": {
+		discordJsName: "messageReactionRemove",
+		spanName: "reaction removed",
+		attributes: (react, user) => ({
+			"discord.message.id": react.message.id,
+			"discord.user.id": user.id,
+		}),
+		logger: (react, user) =>
+			Sentry.logger.info(
+				"Reaction removed",
+				flatten({
+					emoji: react.emoji.name,
+					message: { id: react.message.id },
+					user: {
+						id: user.id,
+						name: user.displayName,
+						bot: user.bot,
+					},
+				}),
+			),
+	} satisfies EventDescriptor<"messageReactionRemove">,
 } as const satisfies Record<string, unknown>;
 
 // Maps our event names to the type of the data for that event
