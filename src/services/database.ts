@@ -45,13 +45,12 @@ export class DatabaseService extends Service {
 		});
 	}
 
-	query<T>(name: string, fn: (db: AppDB) => T): T {
-		return Sentry.startSpanManual({ name, op: "db.query" }, (span) => {
-			try {
-				return fn(this.db);
-			} finally {
-				span.end();
-			}
+	async query<T>(
+		name: string,
+		fn: (...args: Parameters<Parameters<typeof this.db.transaction>[0]>) => Promise<T>,
+	): Promise<T> {
+		return Sentry.startSpan({ name, op: "db.query" }, async () => {
+			return this.db.transaction(fn);
 		});
 	}
 

@@ -1,0 +1,83 @@
+import * as Sentry from "@sentry/bun";
+
+import {
+	MessageReferenceType,
+	type Message,
+	type OmitPartialGroupDMChannel,
+	type PartialMessage,
+} from "discord.js";
+import { Service } from "../utils/service";
+import type { DatabaseService } from "./database";
+import type { DiscordService } from "./discord";
+import { messages } from "../db/schema";
+import { eq } from "drizzle-orm";
+
+export class TrackingService extends Service {
+	#db: DatabaseService;
+
+	constructor(discord: DiscordService, db: DatabaseService) {
+		super();
+		this.#db = db;
+		discord.subscribe("message:create", async (...args) => {
+			this.#handleMessageCreate(...args);
+		});
+		discord.subscribe("message:delete", async (...args) => {
+			this.#handleMessageDelete(...args);
+		});
+	}
+
+	async #handleMessageCreate(message: OmitPartialGroupDMChannel<Message>) {
+		return Sentry.startSpan(
+			{
+				name: "TrackingService.#handleMessageCreate",
+				op: "event.handler",
+			},
+			async () => {
+				if (!message.inGuild()) {
+					Sentry.logger.info("Message not in guild; not tracking", {
+						messageId: message.id,
+						authorId: message.author.id,
+					});
+					return;
+				}
+				// Get the ID of the message that this message replies to
+				const repliesTo =
+					message.reference?.messageId &&
+					message.reference.type === MessageReferenceType.Default
+						? message.reference.messageId
+						: null;
+				this.#db.query("insert message", async (tx) => {
+					await tx.insert(messages).values({
+						id: message.id,
+						author_id: message.author.id,
+						channel_id: message.channelId,
+						content: message.content,
+						guild_id: message.guildId,
+						timestamp: message.createdAt.getTime() / 1000,
+						replies_to: repliesTo,
+					});
+				});
+				Sentry.logger.info("Message saved in database", {
+					"message.id": message.id,
+				});
+			},
+		);
+	}
+
+	async #handleMessageDelete(message: OmitPartialGroupDMChannel<Message> | PartialMessage) {
+		return Sentry.startSpan(
+			{
+				name: "TrackingService.#handleMessageDelete",
+				op: "event.handler",
+			},
+			async () => {
+				this.#db.query("delete message", async (tx) => {
+					await tx.delete(messages).where(eq(messages.id, message.id));
+				});
+				Sentry.logger.info("Message deleted from database", {
+					"message.id": message.id,
+				});
+			},
+		);
+	}
+}

@@ -42,7 +42,7 @@ export class Subscriber<EM extends Record<string, unknown[]>> {
 				() => {
 					Sentry.startSpan(
 						{
-							name: "Consume event",
+							name: "consume event",
 							op: "queue.process",
 							attributes: {
 								"messaging.message.id": key,
@@ -116,7 +116,7 @@ export class Publisher<EM extends Record<string, unknown[]>> {
 		const traceData = Sentry.getTraceData();
 		Sentry.startSpan(
 			{
-				name: "Publish event",
+				name: "publish event",
 				op: "queue.publish",
 				attributes: {
 					"messaging.destination.name": key,
