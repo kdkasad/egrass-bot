@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import * as Sentry from "@sentry/bun";
 import { Feature } from "../utils/service";
+import { traced } from "../utils/tracing";
 import { EnvService } from "./env";
 import { flatten } from "../utils/flatten";
 
@@ -176,45 +177,41 @@ export class DiscordService extends Feature {
 	/**
 	 * Initial client setup that happens in the background after logging in to the Discord Gateway.
 	 */
+	@traced()
 	private async initialSetup() {
-		return Sentry.startSpan(
-			{ name: "DiscordService.initialSetup", op: "function" },
-			async () => {
-				// Set status to "watching you"
-				this.client.user.setActivity({
-					type: ActivityType.Watching,
-					name: "you",
-				});
+		// Set status to "watching you"
+		this.client.user.setActivity({
+			type: ActivityType.Watching,
+			name: "you",
+		});
 
-				// Establish event handlers
-				for (const [ourName, descriptor] of Object.entries(events)) {
-					this.client.on(descriptor.discordJsName, (...d) => {
-						Sentry.startSpan(
-							{
-								parentSpan: null,
-								name: descriptor.spanName,
-								op: "discord.event",
-								attributes: descriptor.attributes(...d),
-							},
-							async () => {
-								// Log the event
-								descriptor.logger(...d);
-								// Get the subscriber handlers
-								const handlers = this.handlers[ourName as keyof Events] ?? [];
-								await Promise.all(
-									handlers.map((handler) =>
-										Sentry.withIsolationScope(() => {
-											return handler(...d);
-										}),
-									),
-								);
-							},
+		// Establish event handlers
+		for (const [ourName, descriptor] of Object.entries(events)) {
+			this.client.on(descriptor.discordJsName, (...d) => {
+				Sentry.startSpan(
+					{
+						parentSpan: null,
+						name: descriptor.spanName,
+						op: "discord.event",
+						attributes: descriptor.attributes(...d),
+					},
+					async () => {
+						// Log the event
+						descriptor.logger(...d);
+						// Get the subscriber handlers
+						const handlers = this.handlers[ourName as keyof Events] ?? [];
+						await Promise.all(
+							handlers.map((handler) =>
+								Sentry.withIsolationScope(() => {
+									return handler(...d);
+								}),
+							),
 						);
-					});
-					Sentry.logger.info(Sentry.logger.fmt`Registered event handler for ${ourName}`);
-				}
-			},
-		);
+					},
+				);
+			});
+			Sentry.logger.info(Sentry.logger.fmt`Registered event handler for ${ourName}`);
+		}
 	}
 
 	/**
@@ -231,10 +228,9 @@ export class DiscordService extends Feature {
 		};
 	}
 
+	@traced()
 	async stop() {
-		return Sentry.startSpan({ name: "DiscordService.stop", op: "function" }, async () => {
-			await this.client.destroy();
-			Sentry.logger.info("Discord client disconnected");
-		});
+		await this.client.destroy();
+		Sentry.logger.info("Discord client disconnected");
 	}
 }

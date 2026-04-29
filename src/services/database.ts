@@ -3,6 +3,7 @@ import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as Sentry from "@sentry/bun";
 import { Service } from "../utils/service";
+import { traced } from "../utils/tracing";
 import * as schema from "../db/schema";
 
 export type AppDB = BunSQLiteDatabase<typeof schema>;
@@ -54,11 +55,10 @@ export class DatabaseService extends Service {
 		});
 	}
 
+	@traced()
 	async stop(): Promise<void> {
-		return Sentry.startSpan({ name: "DatabaseService.stop", op: "function" }, async () => {
-			this.rwConn.close();
-			this.rodb.close();
-			Sentry.logger.info("Database connections closed");
-		});
+		this.rwConn.close();
+		this.rodb.close();
+		Sentry.logger.info("Database connections closed");
 	}
 }
