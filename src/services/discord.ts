@@ -10,6 +10,9 @@ import {
 	type RESTPostAPIChatInputApplicationCommandsJSONBody,
 	ChatInputCommandInteraction,
 	InteractionType,
+	type UserResolvable,
+	MessagePayload,
+	type MessageCreateOptions,
 } from "discord.js";
 import * as Sentry from "@sentry/bun";
 import { Feature } from "../utils/service";
@@ -86,6 +89,34 @@ const events = {
 				}),
 			),
 	} satisfies EventDescriptor<"messageDelete">,
+	"message:edit": {
+		discordJsName: "messageUpdate",
+		spanName: "message edited",
+		attributes: (oldMsg, newMsg) => ({
+			"discord.message.id": newMsg.id,
+			"discord.channel.id": newMsg.channelId,
+			"discord.channel.type": ChannelType[newMsg.channel.type],
+			"discord.user.id": newMsg.author?.id ?? "unknown",
+			"discord.guild.id": newMsg.guildId ?? "none",
+		}),
+		logger: (oldMsg, newMsg) =>
+			Sentry.logger.info(
+				"Message deleted",
+				flatten({
+					message: { id: newMsg.id },
+					channel: {
+						id: newMsg.channel.id,
+						name: newMsg.channel.isDMBased() ? "DM" : newMsg.channel.name,
+						type: ChannelType[newMsg.channel.type],
+					},
+					author: {
+						id: newMsg.author?.id ?? "unknown",
+						name: newMsg.author?.displayName ?? "unknown",
+						bot: newMsg.author?.bot ?? "unknown",
+					},
+				}),
+			),
+	} satisfies EventDescriptor<"messageUpdate">,
 	"reaction:create": {
 		discordJsName: "messageReactionAdd",
 		spanName: "reaction added",
@@ -298,6 +329,13 @@ export class DiscordService extends Feature {
 				},
 			);
 		});
+	}
+
+	@traced()
+	async sendDM(userRef: UserResolvable, data: string | MessagePayload | MessageCreateOptions) {
+		const user = await this.client.users.fetch(userRef);
+		const dm = await user.createDM();
+		await dm.send(data);
 	}
 
 	@traced()

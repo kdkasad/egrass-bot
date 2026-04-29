@@ -5,3 +5,4 @@ export { SignalHandlerService } from "./signals";
 export { ExplodeService } from "./explode";
 export { TrackingService } from "./tracking";
 export { MarkovService } from "./markov";
+export { KeywordNotificationService } from "./keyword-notification";

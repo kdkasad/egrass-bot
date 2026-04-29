@@ -7,6 +7,7 @@ import {
 	ExplodeService,
 	TrackingService,
 	MarkovService,
+	KeywordNotificationService,
 } from "./services";
 
 async function main() {
@@ -38,6 +39,13 @@ async function main() {
 	const explode = new ExplodeService(env, discord);
 	const tracking = new TrackingService(discord, database);
 	const markov = new MarkovService(env, discord, database);
+	const keyword = new KeywordNotificationService(env, discord);
+	// Mark as used so nothing complains
+	void signalHandler;
+	void explode;
+	void tracking;
+	void markov;
+	void keyword;
 }
 
 main();
