@@ -218,17 +218,27 @@ export class DiscordService extends Feature {
 	 */
 	#registerEvent<K extends keyof ClientEvents>(ourName: string, descriptor: EventDescriptor<K>) {
 		this.client.on(descriptor.discordJsName, (...d: ClientEvents[K]) => {
+			let attributes: SpanAttributes | undefined = undefined;
+			try {
+				attributes = descriptor.attributes?.(...d);
+			} catch (e) {
+				Sentry.captureException(e);
+			}
 			Sentry.startSpan(
 				{
 					parentSpan: null,
 					name: descriptor.spanName,
 					op: "discord.event",
-					attributes: descriptor.attributes?.(...d),
+					attributes,
 				},
 				async () => {
-					descriptor.logger(...d);
+					try {
+						descriptor.logger(...d);
+					} catch (e) {
+						Sentry.captureException(e);
+					}
 					const handlers = this.handlers[ourName as keyof Events] ?? [];
-					await Promise.all(
+					await Promise.allSettled(
 						handlers.map((handler) =>
 							Sentry.withIsolationScope(() =>
 								// Safe by construction: ourName and descriptor come from

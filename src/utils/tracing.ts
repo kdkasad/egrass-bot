@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/bun";
+import type { Message, MessageEditOptions, MessagePayload, MessageReplyOptions } from "discord.js";
 
 export function traced(op = "function") {
 	return function <This, Args extends unknown[], Return>(
@@ -22,4 +23,45 @@ export function traced(op = "function") {
 			);
 		};
 	};
+}
+
+/**
+ * Tracing-enabled wrapper around {@link Message.reply()}.
+ */
+export async function replyToMessage(
+	message: Message,
+	payload: string | MessagePayload | MessageReplyOptions,
+) {
+	return Sentry.startSpan(
+		{
+			name: "reply to message",
+			op: "discord.send",
+			attributes: {
+				"message.id": message.id,
+				"channel.id": message.channel.id,
+				"guild.id": message.guild?.id,
+				"user.id": message.author.id,
+			},
+		},
+		() => message.reply(payload),
+	);
+}
+
+export async function editMessage(
+	message: Message,
+	payload: string | MessagePayload | MessageEditOptions,
+) {
+	return Sentry.startSpan(
+		{
+			name: "edit message",
+			op: "discord.send",
+			attributes: {
+				"message.id": message.id,
+				"channel.id": message.channel.id,
+				"guild.id": message.guild?.id,
+				"user.id": message.author.id,
+			},
+		},
+		() => message.edit(payload),
+	);
 }

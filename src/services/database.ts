@@ -5,31 +5,28 @@ import * as Sentry from "@sentry/bun";
 import { Service } from "../utils/service";
 import { traced } from "../utils/tracing";
 import * as schema from "../db/schema";
+import type { EnvService } from "./env";
 
 export type AppDB = BunSQLiteDatabase<typeof schema>;
 
 export class DatabaseService extends Service {
 	private readonly db: AppDB;
 	private readonly rwConn: Database;
-	readonly rodb: Database;
+	readonly dbFilename: string;
 
-	private constructor(db: AppDB, rodb: Database, rwConn: Database) {
+	private constructor(db: AppDB, rwConn: Database) {
 		super();
 		this.db = db;
-		this.rodb = rodb;
 		this.rwConn = rwConn;
+		this.dbFilename = rwConn.filename;
 		Sentry.logger.info(`${this._name} created`);
 	}
 
-	static async new(): Promise<DatabaseService> {
+	static async new(env: EnvService): Promise<DatabaseService> {
 		return Sentry.startSpan({ name: "DatabaseService.new", op: "function" }, async () => {
-			const rwConn = new Database("data.sqlite3", {
+			const rwConn = new Database(env.vars.DATABASE_FILE, {
 				strict: true,
 				create: true,
-			});
-			const roConn = new Database("data.sqlite3", {
-				readonly: true,
-				readwrite: false,
 			});
 			rwConn.run("PRAGMA foreign_keys = ON");
 			const db = drizzle(rwConn, {
@@ -42,7 +39,7 @@ export class DatabaseService extends Service {
 			});
 			migrate(db, { migrationsFolder: "drizzle" });
 			Sentry.logger.info("Database initialization complete");
-			return new DatabaseService(db, roConn, rwConn);
+			return new DatabaseService(db, rwConn);
 		});
 	}
 
@@ -58,7 +55,6 @@ export class DatabaseService extends Service {
 	@traced()
 	async stop(): Promise<void> {
 		this.rwConn.close();
-		this.rodb.close();
 		Sentry.logger.info("Database connections closed");
 	}
 }

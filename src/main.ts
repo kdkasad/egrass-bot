@@ -8,6 +8,7 @@ import {
 	TrackingService,
 	MarkovService,
 	KeywordNotificationService,
+	QueryService,
 } from "./services";
 
 async function main() {
@@ -33,19 +34,21 @@ async function main() {
 	});
 
 	const env = new EnvService();
-	const database = await DatabaseService.new();
+	const database = await DatabaseService.new(env);
 	const discord = await DiscordService.new(env);
 	const signalHandler = new SignalHandlerService(discord, database);
 	const explode = new ExplodeService(env, discord);
 	const tracking = new TrackingService(discord, database);
 	const markov = new MarkovService(env, discord, database);
 	const keyword = new KeywordNotificationService(env, discord);
+	const query = new QueryService(env, discord, database);
 	// Mark as used so nothing complains
 	void signalHandler;
 	void explode;
 	void tracking;
 	void markov;
 	void keyword;
+	void query;
 }
 
 main();
