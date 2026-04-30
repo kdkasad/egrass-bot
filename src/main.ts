@@ -15,6 +15,7 @@ import {
 async function main() {
 	Sentry.init({
 		dsn: process.env.SENTRY_DSN,
+		environment: Bun.env.NODE_ENV,
 		enableLogs: true,
 		tracesSampleRate: 1.0,
 		// Sends Sentry.logger entries to the console
@@ -32,6 +33,10 @@ async function main() {
 			consoleFn(`[${log.level.toUpperCase()}]`, log.message.toString(), log.attributes);
 			return log;
 		},
+	});
+
+	Sentry.logger.info("Bot initializing", {
+		environment: Bun.env.NODE_ENV,
 	});
 
 	const env = new EnvService();
