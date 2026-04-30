@@ -1,5 +1,11 @@
 import * as Sentry from "@sentry/bun";
-import type { Message, MessageEditOptions, MessagePayload, MessageReplyOptions } from "discord.js";
+import type {
+	EmojiIdentifierResolvable,
+	Message,
+	MessageEditOptions,
+	MessagePayload,
+	MessageReplyOptions,
+} from "discord.js";
 
 export function traced(op = "function") {
 	return function <This, Args extends unknown[], Return>(
@@ -63,5 +69,21 @@ export async function editMessage(
 			},
 		},
 		() => message.edit(payload),
+	);
+}
+
+export async function addReaction(message: Message, emoji: string | EmojiIdentifierResolvable) {
+	return Sentry.startSpan(
+		{
+			name: "add reaction",
+			op: "discord.send",
+			attributes: {
+				"message.id": message.id,
+				"channel.id": message.channel.id,
+				"guild.id": message.guild?.id,
+				"user.id": message.author.id,
+			},
+		},
+		() => message.react(emoji),
 	);
 }

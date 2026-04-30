@@ -7,3 +7,4 @@ export { TrackingService } from "./tracking";
 export { MarkovService } from "./markov";
 export { KeywordNotificationService } from "./keyword-notification";
 export { QueryService } from "./query";
+export { TrollService } from "./troll";
