@@ -37,7 +37,9 @@ export class DatabaseService extends Service {
 					},
 				},
 			});
-			migrate(db, { migrationsFolder: "drizzle" });
+			migrate(db, {
+				migrationsFolder: Bun.fileURLToPath(new URL("../../drizzle", import.meta.url)),
+			});
 			Sentry.logger.info("Database initialization complete");
 			return new DatabaseService(db, rwConn);
 		});
