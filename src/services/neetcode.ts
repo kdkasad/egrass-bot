@@ -34,7 +34,6 @@ import { wrapInteractionDo, traced, editMessage } from "../utils/tracing";
 import { Channels, MAX_MSG_CONTENT_LENGTH, Users } from "../consts";
 import { dateToSqlite, sqliteToDate } from "../utils/time";
 import type { CronService } from "./cron";
-import { ja } from "zod/v4/locales";
 
 enum Subcommand {
 	Set = "set",

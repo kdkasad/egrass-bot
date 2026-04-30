@@ -14,15 +14,12 @@ export function traced(op = "function") {
 		context: ClassMethodDecoratorContext<This>,
 	) {
 		return function (this: This, ...args: Args): Promise<Return> {
-			const name = `${(this as any).constructor.name}.${String(context.name)}`;
-			return Sentry.startSpan({ name, op }, () =>
+			const name = (this as object).constructor.name;
+			return Sentry.startSpan({ name: `${name}.${String(context.name)}`, op }, () =>
 				Sentry.withScope((scope) => {
-					scope.setContext("service", {
-						name: (this as any).constructor.name,
-						method: String(context.name),
-					});
+					scope.setContext("service", { name, method: String(context.name) });
 					scope.setAttributes({
-						"service.name": (this as any).constructor.name,
+						"service.name": name,
 						"service.method": String(context.name),
 					});
 					return target.apply(this, args);
@@ -94,7 +91,7 @@ export function wrapInteractionDo<K extends keyof RepliableInteraction>(
 	name: K,
 ): RepliableInteraction[K] {
 	const method = interaction[name];
-	return ((...args: any[]) => {
+	return ((...args: unknown[]) => {
 		return Sentry.startSpan(
 			{
 				name: `discord.interaction.${name}`,
@@ -104,7 +101,7 @@ export function wrapInteractionDo<K extends keyof RepliableInteraction>(
 					"discord.user.id": interaction.user.id,
 				},
 			},
-			() => (method as Function).apply(interaction, args),
+			() => (method as (...args: unknown[]) => Promise<unknown>).apply(interaction, args),
 		);
 	}) as RepliableInteraction[K];
 }
