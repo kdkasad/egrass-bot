@@ -44,28 +44,6 @@ export const solves = sqliteTable(
 	],
 );
 
-export const quotes = sqliteTable(
-	"quotes",
-	{
-		category: text("category").notNull(),
-		guild_id: text("guild_id").notNull(),
-		channel_id: text("channel_id").notNull(),
-		message_id: text("message_id").notNull(),
-		quote: text("quote").notNull(),
-		author_user_id: text("author_user_id").notNull(),
-		timestamp: integer("timestamp").notNull(),
-	},
-	(t) => [
-		index("idx_quotes_category").on(t.category),
-		uniqueIndex("idx_quotes_category_channel_message").on(
-			t.category,
-			t.guild_id,
-			t.channel_id,
-			t.message_id,
-		),
-	],
-);
-
 export const messages = sqliteTable(
 	"messages",
 	{
