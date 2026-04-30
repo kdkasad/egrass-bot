@@ -12,7 +12,7 @@ import {
 import { Feature } from "../utils/service";
 import type { DiscordService } from "./discord";
 import type { EnvService } from "./env";
-import { traced } from "../utils/tracing";
+import { traced, wrapInteractionDo } from "../utils/tracing";
 import type { DatabaseService, Transaction } from "./database";
 import { Tokenizr } from "tokenizr";
 import { markov4 } from "../db/schema";
@@ -166,7 +166,10 @@ export class MarkovService extends Feature {
 		try {
 			const sentence = await this.#generateSentence(prompt, target?.id);
 			if (sentence) {
-				await interaction.reply({
+				await wrapInteractionDo(
+					interaction,
+					"reply",
+				)({
 					content: sentence,
 					allowedMentions: { parse: [] }, // silence mentions
 				});
@@ -174,7 +177,10 @@ export class MarkovService extends Feature {
 			} else {
 				// Failed to generate sentence
 				const targetMention = target ? `from ${userMention(target.id)}` : "";
-				await interaction.reply({
+				await wrapInteractionDo(
+					interaction,
+					"reply",
+				)({
 					content: `⚠️ Error: cannot extrapolate from "${prompt}".
 No messages in the database were found ${targetMention} which start with the prompt.`,
 					flags: [MessageFlags.Ephemeral],

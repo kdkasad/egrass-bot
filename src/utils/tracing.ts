@@ -5,6 +5,7 @@ import type {
 	MessageEditOptions,
 	MessagePayload,
 	MessageReplyOptions,
+	RepliableInteraction,
 } from "discord.js";
 
 export function traced(op = "function") {
@@ -86,4 +87,24 @@ export async function addReaction(message: Message, emoji: string | EmojiIdentif
 		},
 		() => message.react(emoji),
 	);
+}
+
+export function wrapInteractionDo<K extends keyof RepliableInteraction>(
+	interaction: RepliableInteraction,
+	name: K,
+): RepliableInteraction[K] {
+	const method = interaction[name];
+	return ((...args: any[]) => {
+		return Sentry.startSpan(
+			{
+				name: `discord.interaction.${name}`,
+				op: "discord.send",
+				attributes: {
+					"discord.interaction.id": interaction.id,
+					"discord.user.id": interaction.user.id,
+				},
+			},
+			() => (method as Function).apply(interaction, args),
+		);
+	}) as RepliableInteraction[K];
 }

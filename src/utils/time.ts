@@ -19,3 +19,21 @@ export function parseDuration(duration: string): number {
 			matchToNum(days) * 1000 * 60 * 60 * 24,
 	);
 }
+
+/**
+ * Converts a {@link Date} to a SQLite timestamp
+ * @param date a date
+ * @returns seconds since epoch
+ */
+export function dateToSqlite(date: Date): number {
+	return Math.floor(date.getTime() / 1000);
+}
+
+/**
+ * Converts a SQLite timestamp to a {@link Date}
+ * @param timestamp seconds since epoch
+ * @returns a date
+ */
+export function sqliteToDate(timestamp: number): Date {
+	return new Date(timestamp * 1000);
+}
