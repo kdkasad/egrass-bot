@@ -15,6 +15,13 @@
       "when": 1777490674720,
       "tag": "0001_handy_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777590322382,
+      "tag": "0002_orange_shen",
+      "breakpoints": true
     }
   ]
 }
