@@ -159,6 +159,54 @@ const events = {
 				}),
 			),
 	} satisfies EventDescriptor<"messageReactionRemove">,
+	"member:join": {
+		discordJsName: "guildMemberAdd",
+		spanName: "guild member joined",
+		attributes: (member) => ({
+			"discord.user.id": member.user.id,
+			"discord.member.id": member.id,
+			"discord.member.name": member.displayName,
+		}),
+		logger: (member) =>
+			Sentry.logger.info(
+				"Guild member joined",
+				flatten({
+					member: {
+						id: member.id,
+						name: member.displayName,
+					},
+					user: {
+						id: member.user.id,
+						username: member.user.username,
+					},
+				}),
+			),
+	} satisfies EventDescriptor<"guildMemberAdd">,
+	"member:update": {
+		discordJsName: "guildMemberUpdate",
+		spanName: "guild member updated",
+		attributes: (oldMember, newMember) => ({
+			"discord.user.id": newMember.user.id,
+			"discord.member.id": newMember.id,
+			"discord.member.name": newMember.displayName,
+			"discord.member.old_name": oldMember.displayName,
+		}),
+		logger: (oldMember, newMember) =>
+			Sentry.logger.info(
+				"Guild member updated",
+				flatten({
+					member: {
+						id: newMember.id,
+						name: newMember.displayName,
+						old_name: oldMember.displayName,
+					},
+					user: {
+						id: newMember.user.id,
+						username: newMember.user.username,
+					},
+				}),
+			),
+	} satisfies EventDescriptor<"guildMemberUpdate">,
 } as const satisfies Record<string, unknown>;
 
 // Maps our event names to the type of the data for that event
