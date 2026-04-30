@@ -5,11 +5,11 @@
 		"email": "kian@kasad.com",
 		"url": "https://kasad.com"
 	},
-	"module": "src/index.ts",
+	"module": "src/main.ts",
 	"type": "module",
 	"scripts": {
-		"dev": "bun run -b src/index.ts",
-		"watch": "bun run -b --watch src/index.ts",
+		"dev": "bun run -b .",
+		"watch": "bun run -b --watch .",
 		"lint": "bun run -b eslint",
 		"db:generate": "drizzle-kit generate"
 	},
