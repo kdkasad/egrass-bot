@@ -169,7 +169,7 @@ export type Events = {
 type EventHandler<K extends keyof Events> = (...data: Events[K]) => Promise<void>;
 
 export class DiscordService extends Feature {
-	private client: Client<true>;
+	readonly client: Client<true>;
 	private handlers: {
 		[K in keyof Events]?: EventHandler<K>[];
 	} = {};
