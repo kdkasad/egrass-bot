@@ -8,3 +8,5 @@ export { MarkovService } from "./markov";
 export { KeywordNotificationService } from "./keyword-notification";
 export { QueryService } from "./query";
 export { TrollService } from "./troll";
+export { CronService } from "./cron";
+export { NeetcodeService } from "./neetcode";

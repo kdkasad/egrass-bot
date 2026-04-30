@@ -10,7 +10,7 @@ const schema = z.object({
 	DISABLED_FEATURES: z
 		.string()
 		.default("")
-		.transform((s) => new Set(s.split(","))),
+		.transform((s) => new Set(s.toLowerCase().split(","))),
 });
 
 export class EnvService extends Service {

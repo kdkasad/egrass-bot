@@ -10,6 +10,8 @@ import {
 	KeywordNotificationService,
 	QueryService,
 	TrollService,
+	CronService,
+	NeetcodeService,
 } from "./services";
 
 async function main() {
@@ -40,6 +42,7 @@ async function main() {
 	});
 
 	const env = new EnvService();
+	const cron = new CronService();
 	const database = await DatabaseService.new(env);
 	const discord = await DiscordService.new(env);
 	const signalHandler = new SignalHandlerService(discord, database);
@@ -49,6 +52,7 @@ async function main() {
 	const keyword = new KeywordNotificationService(env, discord);
 	const query = new QueryService(env, discord, database);
 	const troll = new TrollService(env, discord, database);
+	const neetcode = new NeetcodeService(env, discord, database, cron);
 	// Mark as used so nothing complains
 	(void signalHandler, explode, tracking, markov, keyword, query, troll);
 }
