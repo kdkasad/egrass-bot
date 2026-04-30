@@ -7,7 +7,6 @@ import {
 	userMention,
 	type Message,
 	type OmitPartialGroupDMChannel,
-	type PartialMessage,
 } from "discord.js";
 import { Feature } from "../utils/service";
 import type { DiscordService } from "./discord";
@@ -16,7 +15,6 @@ import { traced, wrapInteractionDo } from "../utils/tracing";
 import type { DatabaseService, Transaction } from "./database";
 import { Tokenizr } from "tokenizr";
 import { markov4 } from "../db/schema";
-import type { SQLiteTransaction } from "drizzle-orm/sqlite-core";
 import { and, eq, sql } from "drizzle-orm";
 
 enum Tokens {
@@ -60,13 +58,13 @@ export class MarkovService extends Feature {
 		this.#tokenizer = MarkovService.#createTokenizer();
 
 		if (this.isEnabled()) {
-			discord.subscribe("message:create", (...args) =>
+			this.#discord.subscribe("message:create", (...args) =>
 				this.#processMessageForTraining(...args),
 			);
 			// We don't need to handle message:delete events because the markov4 table has ON DELETE CASCADE.
 
 			// Register the slash command. This will run asynchronously.
-			discord
+			this.#discord
 				.registerSlashCommand(commandSpec, (interaction) =>
 					this.#handleSlashCommand(interaction),
 				)

@@ -5,7 +5,6 @@ import {
 	ActivityType,
 	type ClientEvents,
 	ChannelType,
-	type ChatInputApplicationCommandData,
 	type JSONEncodable,
 	type RESTPostAPIChatInputApplicationCommandsJSONBody,
 	ChatInputCommandInteraction,
@@ -313,6 +312,7 @@ export class DiscordService extends Feature {
 
 		// Establish event handlers
 		for (const [ourName, descriptor] of Object.entries(events)) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			this.#registerEvent(ourName, descriptor as EventDescriptor<any>);
 			Sentry.logger.info(Sentry.logger.fmt`Registered event handler for ${ourName}`);
 		}

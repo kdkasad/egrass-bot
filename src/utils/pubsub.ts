@@ -48,9 +48,7 @@ export class Subscriber<EM extends Record<string, unknown[]>> {
 								"messaging.message.id": key,
 							},
 						},
-						(span) => {
-							fn(...data);
-						},
+						() => fn(...data),
 					);
 				},
 			);

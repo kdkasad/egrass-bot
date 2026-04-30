@@ -4,11 +4,11 @@
  * @returns the duration in milliseconds
  */
 export function parseDuration(duration: string): number {
-	let days = duration.match(/(\d+(?:\.\d+)?)\s*d/);
-	let hours = duration.match(/(\d+(?:\.\d+)?)\s*h/);
-	let minutes = duration.match(/(\d+(?:\.\d+)?)\s*m($|[^s])/);
-	let seconds = duration.match(/(\d+(?:\.\d+)?)\s*s/);
-	let milliseconds = duration.match(/(\d+(?:\.\d+)?)\s*ms/);
+	const days = duration.match(/(\d+(?:\.\d+)?)\s*d/);
+	const hours = duration.match(/(\d+(?:\.\d+)?)\s*h/);
+	const minutes = duration.match(/(\d+(?:\.\d+)?)\s*m($|[^s])/);
+	const seconds = duration.match(/(\d+(?:\.\d+)?)\s*s/);
+	const milliseconds = duration.match(/(\d+(?:\.\d+)?)\s*ms/);
 	const matchToNum = (match: RegExpMatchArray | null) =>
 		match === null ? 0 : parseFloat(match[1]);
 	return Math.round(

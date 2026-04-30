@@ -53,8 +53,8 @@ async function main() {
 	const query = new QueryService(env, discord, database);
 	const troll = new TrollService(env, discord, database);
 	const neetcode = new NeetcodeService(env, discord, database, cron);
-	// Mark as used so nothing complains
-	(void signalHandler, explode, tracking, markov, keyword, query, troll);
+	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+	(void signalHandler, explode, tracking, markov, keyword, query, troll, neetcode);
 }
 
 main();

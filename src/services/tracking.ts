@@ -145,12 +145,10 @@ export class TrackingService extends Service {
 					display_name: member.displayName,
 					username: member.user.username,
 				};
-				this.#db.query("upsert member", (tx) =>
-					tx.insert(membersTable).values(record).onConflictDoUpdate({
-						target: membersTable.id,
-						set: record,
-					}),
-				);
+				await tx.insert(membersTable).values(record).onConflictDoUpdate({
+					target: membersTable.id,
+					set: record,
+				});
 			}
 		});
 		Sentry.logger.info(Sentry.logger.fmt`${members.size} members saved in database`);
