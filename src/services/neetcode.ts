@@ -25,7 +25,11 @@ import z from "zod";
 import { SQLiteError } from "bun:sqlite";
 import { eq, gte, asc, min, isNotNull, and, or, isNull, lt, sql, count, max } from "drizzle-orm";
 
-import { announcements, problems as problemsTable, solves as solvesTable } from "../db/schema";
+import {
+	neetcodeAnnouncements,
+	neetcodeProblems as problemsTable,
+	neetcodeSolves as solvesTable,
+} from "../db/schema";
 import { Feature } from "../utils/service";
 import type { DatabaseService } from "./database";
 import type { DiscordService } from "./discord";
@@ -539,18 +543,21 @@ Continue?`,
 			// Get longest streak
 			const validSolvesCTE = tx.$with("valid_solves").as(
 				tx
-					.select({ date: announcements.date })
+					.select({ date: neetcodeAnnouncements.date })
 					.from(solvesTable)
 					.innerJoin(
-						announcements,
-						eq(announcements.message_id, solvesTable.announcement_id),
+						neetcodeAnnouncements,
+						eq(neetcodeAnnouncements.message_id, solvesTable.announcement_id),
 					)
 					.where(
 						and(
 							eq(solvesTable.user_id, user.id),
 							or(
 								isNull(solvesTable.solve_time),
-								lt(sql`${solvesTable.solve_time} - ${announcements.date}`, 86400),
+								lt(
+									sql`${solvesTable.solve_time} - ${neetcodeAnnouncements.date}`,
+									86400,
+								),
 							),
 						),
 					),
@@ -616,11 +623,11 @@ Continue?`,
 				return tx
 					.with(userSolves)
 					.select({
-						messageId: announcements.message_id,
-						date: announcements.date,
+						messageId: neetcodeAnnouncements.message_id,
+						date: neetcodeAnnouncements.date,
 					})
-					.from(announcements)
-					.where(sql`${announcements.message_id} NOT IN ${userSolves}`);
+					.from(neetcodeAnnouncements)
+					.where(sql`${neetcodeAnnouncements.message_id} NOT IN ${userSolves}`);
 			},
 		);
 
@@ -785,7 +792,7 @@ ${this.#formatProblemURLs(problems)}`,
 
 		// Add to database
 		await this.#db.query("insert announcement", (tx) =>
-			tx.insert(announcements).values({
+			tx.insert(neetcodeAnnouncements).values({
 				message_id: message.id,
 				date: dateToSqlite(today),
 			}),
@@ -938,8 +945,8 @@ ${this.#formatProblemURLs(problems)}`,
 
 	async #isPastAnnouncement(messageId: string): Promise<boolean> {
 		const row = await this.#db.query("find announcement", (tx) =>
-			tx.query.announcements.findFirst({
-				where: eq(announcements.message_id, messageId),
+			tx.query.neetcodeAnnouncements.findFirst({
+				where: eq(neetcodeAnnouncements.message_id, messageId),
 			}),
 		);
 		return row !== undefined;
