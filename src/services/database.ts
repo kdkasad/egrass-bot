@@ -2,12 +2,16 @@ import { Database } from "bun:sqlite";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as Sentry from "@sentry/bun";
+
 import { Service } from "../utils/service";
 import { traced } from "../utils/tracing";
 import * as schema from "../db/schema";
 import type { EnvService } from "./env";
+import { parseDuration } from "../utils/time";
 
 export type AppDB = BunSQLiteDatabase<typeof schema>;
+
+const DB_BUSY_TIMEOUT_MS = parseDuration("5s");
 
 export class DatabaseService extends Service {
 	private readonly db: AppDB;
@@ -28,6 +32,8 @@ export class DatabaseService extends Service {
 				strict: true,
 				create: true,
 			});
+			rwConn.run("PRAGMA journal_mode = WAL");
+			rwConn.run(`PRAGMA busy_timeout = ${DB_BUSY_TIMEOUT_MS}`);
 			rwConn.run("PRAGMA foreign_keys = ON");
 			const db = drizzle(rwConn, {
 				schema,
