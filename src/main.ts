@@ -43,7 +43,7 @@ async function main() {
 
 	const env = new EnvService();
 	const cron = new CronService();
-	const database = await DatabaseService.new(env);
+	const database = await DatabaseService.new(env, cron);
 	const discord = await DiscordService.new(env);
 	const signalHandler = new SignalHandlerService(discord, database);
 	const explode = new ExplodeService(env, discord);
