@@ -242,11 +242,11 @@ No messages in the database were found ${targetMention} which start with the pro
 		word4: string | null,
 	): Promise<string | null> {
 		const filter = and(
-			authorId === undefined ? undefined : eq(markov4.author_id, authorId),
 			sql`${markov4.word1} IS ${word1}`,
 			sql`${markov4.word2} IS ${word2}`,
 			sql`${markov4.word3} IS ${word3}`,
 			sql`${markov4.word4} IS ${word4}`,
+			authorId === undefined ? undefined : eq(markov4.author_id, authorId),
 		);
 		// Get number of possible next words
 		const count = await tx.$count(markov4, filter);

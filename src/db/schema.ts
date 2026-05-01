@@ -13,10 +13,7 @@ export const problems = sqliteTable(
 		date: integer("date").notNull(),
 		url: text("url").notNull().unique(),
 	},
-	(t) => [
-		uniqueIndex("idx_problems_date_url").on(t.date, t.url),
-		index("idx_problems_date").on(t.date),
-	],
+	(t) => [uniqueIndex("idx_problems_date_url").on(t.date, t.url)],
 );
 
 export const announcements = sqliteTable(
@@ -38,7 +35,6 @@ export const solves = sqliteTable(
 			.references(() => announcements.message_id),
 	},
 	(t) => [
-		index("idx_solves_user_id").on(t.user_id),
 		index("idx_solves_announcement_id").on(t.announcement_id),
 		uniqueIndex("idx_solves_user_id_announcement_id").on(t.user_id, t.announcement_id),
 	],
@@ -73,8 +69,7 @@ export const markov4 = sqliteTable(
 	},
 	(t) => [
 		index("idx_markov4_message_id").on(t.message_id),
-		index("idx_markov4_prefix").on(t.word1, t.word2, t.word3, t.word4),
-		index("idx_markov4_author_prefix").on(t.author_id, t.word1, t.word2, t.word3, t.word4),
+		index("idx_markov4_prefix_author").on(t.word1, t.word2, t.word3, t.word4, t.author_id),
 	],
 );
 
