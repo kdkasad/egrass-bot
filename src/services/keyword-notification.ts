@@ -90,7 +90,10 @@ export class KeywordNotificationService extends Feature {
 
 	@traced("event.handler")
 	async #handleNewMessage(message: OmitPartialGroupDMChannel<Message>) {
-		return this.#notifyUsers(this.#getUsersToNotify(message), message);
+		const users = this.#getUsersToNotify(message);
+		if (users.size > 0) {
+			await this.#notifyUsers(users, message);
+		}
 	}
 
 	@traced("event.handler")
