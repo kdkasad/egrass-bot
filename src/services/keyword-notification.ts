@@ -72,6 +72,9 @@ export class KeywordNotificationService extends Feature {
 			// Don't notify users about their own messages
 			if (message.author.id === user) continue;
 
+			// Don't notify users if the message already mentions them
+			if (message.mentions.users.has(user)) continue;
+
 			// Check content
 			if (pattern.test(message.content)) {
 				getOrInsert(result, user, new Set()).add(type);
