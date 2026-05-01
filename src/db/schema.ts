@@ -7,8 +7,8 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const problems = sqliteTable(
-	"problems",
+export const neetcodeProblems = sqliteTable(
+	"neetcode_problems",
 	{
 		date: integer("date").notNull(),
 		url: text("url").notNull().unique(),
@@ -16,8 +16,8 @@ export const problems = sqliteTable(
 	(t) => [uniqueIndex("idx_problems_date_url").on(t.date, t.url)],
 );
 
-export const announcements = sqliteTable(
-	"announcements",
+export const neetcodeAnnouncements = sqliteTable(
+	"neetcode_announcements",
 	{
 		message_id: text("message_id").primaryKey().notNull(),
 		date: integer("date").notNull().unique(),
@@ -25,14 +25,14 @@ export const announcements = sqliteTable(
 	(t) => [index("idx_announcements_date").on(t.date)],
 );
 
-export const solves = sqliteTable(
-	"solves",
+export const neetcodeSolves = sqliteTable(
+	"neetcode_solves",
 	{
 		user_id: text("user_id").notNull(),
 		solve_time: integer("solve_time"),
 		announcement_id: text("announcement_id")
 			.notNull()
-			.references(() => announcements.message_id),
+			.references(() => neetcodeAnnouncements.message_id),
 	},
 	(t) => [
 		index("idx_solves_announcement_id").on(t.announcement_id),
