@@ -15,6 +15,9 @@ const SHORT_TIMEOUT_MS = parseDuration("16.7s");
 const LONG_TIMEOUT_MS = parseDuration("1d");
 
 export class TrollService extends Feature {
+	static readonly #TEST_REGEX =
+		/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b(6+7+)+(?:_.*\.gif)?\b)/i;
+
 	#db: DatabaseService;
 	#discord: DiscordService;
 
@@ -61,7 +64,7 @@ export class TrollService extends Feature {
 			(message.channel.isThread()
 				? message.channel.parentId !== Channels.Announcements
 				: message.channelId !== Channels.Announcements) &&
-			message.content.match(/(?:\b(?:6+|six)\b.*\b(?:7+|seven)\b)|(?:\b(6+7+)+\b)/i) !== null
+			message.content.match(TrollService.#TEST_REGEX) !== null
 		);
 	}
 
