@@ -10,3 +10,4 @@ export { QueryService } from "./query";
 export { TrollService } from "./troll";
 export { CronService } from "./cron";
 export { NeetcodeService } from "./neetcode";
+export { WebhookService } from "./webhook";

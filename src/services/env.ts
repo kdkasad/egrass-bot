@@ -11,6 +11,7 @@ const schema = z.object({
 		.string()
 		.default("")
 		.transform((s) => new Set(s.toLowerCase().split(","))),
+	AUTH_SECRET: z.string().nonempty(),
 });
 
 export class EnvService extends Service {

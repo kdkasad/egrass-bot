@@ -401,4 +401,11 @@ export class DiscordService extends Feature {
 		await this.client.destroy();
 		Sentry.logger.info("Discord client disconnected");
 	}
+
+	@traced()
+	async sendMessage(channelId: string, message: string | MessagePayload | MessageCreateOptions) {
+		const channel = await this.client.channels.fetch(channelId);
+		if (!channel?.isSendable()) throw new Error("Channel is not sendable");
+		return channel.send(message);
+	}
 }
