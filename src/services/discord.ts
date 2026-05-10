@@ -352,9 +352,9 @@ export class DiscordService extends Feature {
 		await Promise.all(
 			this.client.guilds.cache.values().map(async (guild) => {
 				const metadata = {
-					"command.name": command.toJSON().name,
-					"guild.id": guild.id,
-					"guild.name": guild.name,
+					"discord.command.name": command.toJSON().name,
+					"discord.guild.id": guild.id,
+					"discord.guild.name": guild.name,
 				};
 				try {
 					await guild.commands.create(command);
