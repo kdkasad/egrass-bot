@@ -12,7 +12,7 @@ import {
 	TrollService,
 	CronService,
 	NeetcodeService,
-	WebhookService,
+	HTTPService,
 } from "./services";
 
 async function main() {
@@ -53,8 +53,8 @@ async function main() {
 	const query = new QueryService(env, discord, database);
 	const troll = new TrollService(env, discord, database);
 	const neetcode = new NeetcodeService(env, discord, database, cron);
-	const webhook = new WebhookService(env, discord);
-	const signalHandler = new SignalHandlerService(discord, database, webhook);
+	const http = new HTTPService(env, discord, database);
+	const signalHandler = new SignalHandlerService(discord, database, http);
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 	(void signalHandler, explode, tracking, markov, keyword, query, troll, neetcode);
 }

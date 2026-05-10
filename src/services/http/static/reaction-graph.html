@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Reaction graph</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+				font-family: system-ui, sans-serif;
+			}
+			#cy {
+				width: 100vw;
+				height: 100vh;
+				display: block;
+				background: #fafafa;
+			}
+			#status {
+				position: fixed;
+				top: 12px;
+				left: 12px;
+				z-index: 10;
+				background: rgba(255, 255, 255, 0.92);
+				padding: 8px 12px;
+				border: 1px solid #ccc;
+				border-radius: 4px;
+				font-size: 14px;
+				max-width: 80vw;
+			}
+			#status.error {
+				color: #b00020;
+				border-color: #b00020;
+			}
+			#status.hidden {
+				display: none;
+			}
+			#controls {
+				position: fixed;
+				top: 12px;
+				right: 12px;
+				z-index: 10;
+				background: rgba(255, 255, 255, 0.92);
+				padding: 8px 12px;
+				border: 1px solid #ccc;
+				border-radius: 4px;
+				font-size: 14px;
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+			#controls.hidden {
+				display: none;
+			}
+			#controls input[type="range"] {
+				width: 160px;
+			}
+			#controls input[type="number"] {
+				width: 56px;
+			}
+		</style>
+		<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+		<script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
+		<script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+		<script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+	</head>
+	<body>
+		<div id="status">Loading…</div>
+		<div id="controls" class="hidden">
+			<label for="weightNumber">Min edge weight:</label>
+			<input id="weightSlider" type="range" min="1" max="1" step="1" value="1" />
+			<input id="weightNumber" type="number" min="1" max="1" step="1" value="1" />
+			<label for="edgeLenNumber">Edge length:</label>
+			<input id="edgeLenSlider" type="range" min="100" max="2000" step="10" value="500" />
+			<input id="edgeLenNumber" type="number" min="100" max="2000" step="10" value="500" />
+		</div>
+		<div id="cy"></div>
+		<script>
+			const statusEl = document.getElementById("status");
+			const setStatus = (msg, isError = false) => {
+				statusEl.textContent = msg;
+				statusEl.classList.toggle("error", isError);
+				statusEl.classList.remove("hidden");
+			};
+			const hideStatus = () => statusEl.classList.add("hidden");
+
+			const params = new URLSearchParams(window.location.search);
+			const guildId = params.get("guildId");
+			if (!guildId) {
+				setStatus("Missing required query parameter: guildId", true);
+				throw new Error("missing guildId");
+			}
+
+			async function load() {
+				setStatus("Fetching graph data…");
+				const res = await fetch(
+					`/api/guilds/${encodeURIComponent(guildId)}/reaction-graph`,
+				);
+				if (!res.ok) {
+					const text = await res.text();
+					setStatus(`Failed to load data: ${res.status} ${text}`, true);
+					return;
+				}
+				const rows = await res.json();
+				if (rows.length === 0) {
+					setStatus("No reactions found for this guild.", true);
+					return;
+				}
+
+				const nodes = new Map();
+				const edges = [];
+				for (const { srcId, srcName, dstId, dstName, weight } of rows) {
+					if (!nodes.has(srcId)) nodes.set(srcId, srcName);
+					if (!nodes.has(dstId)) nodes.set(dstId, dstName);
+					edges.push({
+						data: {
+							id: `${srcId}->${dstId}`,
+							source: srcId,
+							target: dstId,
+							weight,
+							label: String(weight),
+						},
+					});
+				}
+				const elements = [
+					...Array.from(nodes, ([id, label]) => ({ data: { id, label } })),
+					...edges,
+				];
+
+				const weights = edges.map((e) => e.data.weight);
+				const minW = Math.min(...weights);
+				const maxW = Math.max(...weights);
+
+				const layoutOpts = {
+					name: "fcose",
+					quality: "proof",
+					animate: false,
+					nodeRepulsion: 50000,
+					idealEdgeLength: 500,
+					nodeSeparation: 200,
+					packComponents: true,
+					gravity: 0.25,
+				};
+
+				const cy = cytoscape({
+					container: document.getElementById("cy"),
+					elements,
+					style: [
+						{
+							selector: "node",
+							style: {
+								"background-color": "#4a90e2",
+								label: "data(label)",
+								color: "#222",
+								"font-size": 11,
+								"text-valign": "center",
+								"text-halign": "center",
+								"text-outline-color": "#fff",
+								"text-outline-width": 2,
+								width: 28,
+								height: 28,
+								"transition-property": "opacity",
+								"transition-duration": 150,
+							},
+						},
+						{
+							selector: "edge",
+							style: {
+								"curve-style": "bezier",
+								"target-arrow-shape": "triangle",
+								"target-arrow-color": "#888",
+								"line-color": "#888",
+								width:
+									minW === maxW ? 1.5 : `mapData(weight, ${minW}, ${maxW}, 1, 6)`,
+								label: "data(label)",
+								"font-size": 9,
+								color: "#555",
+								"text-background-color": "#fafafa",
+								"text-background-opacity": 0.9,
+								"text-background-padding": 1,
+								"text-rotation": "autorotate",
+								"arrow-scale": 1,
+								"transition-property": "opacity",
+								"transition-duration": 150,
+							},
+						},
+						{
+							selector: ".faded",
+							style: { opacity: 0.08 },
+						},
+						{
+							selector: "node.highlighted",
+							style: { "background-color": "#e2734a", "z-index": 10 },
+						},
+						{
+							selector: "edge.highlighted",
+							style: {
+								"line-color": "#e2734a",
+								"target-arrow-color": "#e2734a",
+								"z-index": 10,
+							},
+						},
+					],
+					layout: layoutOpts,
+					wheelSensitivity: 0.2,
+				});
+
+				const clearHighlight = () => {
+					cy.elements().removeClass("faded highlighted");
+				};
+
+				cy.on("tap", "node", (evt) => {
+					const node = evt.target;
+					const visibleEdges = node.connectedEdges(":visible");
+					const neighborhood = node
+						.union(visibleEdges)
+						.union(visibleEdges.connectedNodes());
+					cy.elements().addClass("faded");
+					neighborhood.removeClass("faded").addClass("highlighted");
+				});
+
+				cy.on("tap", (evt) => {
+					if (evt.target === cy) clearHighlight();
+				});
+
+				const controls = document.getElementById("controls");
+				const slider = document.getElementById("weightSlider");
+				const number = document.getElementById("weightNumber");
+				slider.min = number.min = String(minW);
+				slider.max = number.max = String(maxW);
+				slider.value = number.value = String(minW);
+				controls.classList.remove("hidden");
+
+				let runningLayout = null;
+				let pendingTimer = null;
+				const scheduleRelayout = () => {
+					if (pendingTimer !== null) clearTimeout(pendingTimer);
+					pendingTimer = setTimeout(() => {
+						pendingTimer = null;
+						if (runningLayout) runningLayout.stop();
+						runningLayout = cy.elements(":visible").layout(layoutOpts);
+						runningLayout.run();
+					}, 200);
+				};
+
+				const applyFilter = (threshold) => {
+					cy.batch(() => {
+						cy.edges().forEach((e) => {
+							e.style("display", e.data("weight") >= threshold ? "element" : "none");
+						});
+						cy.nodes().forEach((n) => {
+							const hasVisible = n
+								.connectedEdges()
+								.some((e) => e.data("weight") >= threshold);
+							n.style("display", hasVisible ? "element" : "none");
+						});
+					});
+					scheduleRelayout();
+				};
+
+				const onWeightChange = (value) => {
+					slider.value = number.value = String(value);
+					applyFilter(Number(value));
+				};
+				slider.addEventListener("input", (e) => onWeightChange(e.target.value));
+				number.addEventListener("input", (e) => onWeightChange(e.target.value));
+
+				const edgeLenSlider = document.getElementById("edgeLenSlider");
+				const edgeLenNumber = document.getElementById("edgeLenNumber");
+				layoutOpts.idealEdgeLength = Number(edgeLenSlider.value);
+				const onEdgeLenChange = (value) => {
+					edgeLenSlider.value = edgeLenNumber.value = String(value);
+					layoutOpts.idealEdgeLength = Number(value);
+					scheduleRelayout();
+				};
+				edgeLenSlider.addEventListener("input", (e) => onEdgeLenChange(e.target.value));
+				edgeLenNumber.addEventListener("input", (e) => onEdgeLenChange(e.target.value));
+
+				hideStatus();
+			}
+
+			load().catch((err) => setStatus(`Error: ${err.message}`, true));
+		</script>
+	</body>
+</html>
