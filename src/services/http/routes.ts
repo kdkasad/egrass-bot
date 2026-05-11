@@ -5,6 +5,8 @@ import type { DiscordService } from "../discord";
 import type { DatabaseService } from "../database";
 import { withAuth, withAssertContentType } from "../../utils/middleware";
 
+import ReactionGraphHTML from "./static/reaction-graph.html";
+
 type ReactionGraphRow = {
 	srcId: string;
 	srcName: string;
@@ -41,10 +43,7 @@ export const routes = (secret: string, discord: DiscordService, db: DatabaseServ
 			),
 		},
 
-		"/reaction-graph/": () =>
-			new Response(Bun.file(new URL("./static/reaction-graph.html", import.meta.url)), {
-				headers: { "Content-Type": "text/html; charset=utf-8" },
-			}),
+		"/reaction-graph/": ReactionGraphHTML,
 
 		"/api/guilds/:guildId/reaction-graph": async (req) => {
 			try {
