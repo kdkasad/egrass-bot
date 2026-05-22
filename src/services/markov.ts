@@ -85,6 +85,9 @@ export class MarkovService extends Feature {
 			this.#discord.subscribe("message:create", (...args) =>
 				this.#processMessageForTraining(...args),
 			);
+			this.#discord.subscribe("message:edit", (_, msg) =>
+				this.#processMessageForTraining(msg),
+			);
 			// We don't need to handle message:delete events because the markov4 table has ON DELETE CASCADE.
 
 			// Register the commands. This will run asynchronously.
@@ -152,6 +155,8 @@ export class MarkovService extends Feature {
 		const prefix: (string | null)[] = [null, null, null, null];
 		const tokens = this.#tokenize(message.content);
 		await this.#db.query("insert markov entries", async (tx) => {
+			// Delete existing entries (for updating edited messages)
+			await tx.delete(markov4).where(eq(markov4.message_id, message.id));
 			for (const token of tokens) {
 				await tx.insert(markov4).values({
 					message_id: message.id,
