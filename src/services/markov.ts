@@ -7,8 +7,11 @@ import {
 	MessageContextMenuCommandInteraction,
 	MessageFlags,
 	messageLink,
+	MessagePayload,
 	SlashCommandBuilder,
 	userMention,
+	type InteractionEditReplyOptions,
+	type InteractionReplyOptions,
 	type Message,
 	type OmitPartialGroupDMChannel,
 } from "discord.js";
@@ -185,44 +188,49 @@ export class MarkovService extends Feature {
 			"user.id": interaction.user.id,
 		};
 		Sentry.getActiveSpan()?.setAttributes(metadata);
+
+		const defer = wrapInteractionDo(interaction, "deferReply")({ withResponse: true });
+		// Send non-ephemeral message
+		const sendPublic = async (
+			message: string | MessagePayload | InteractionEditReplyOptions,
+		) => {
+			await defer;
+			return await wrapInteractionDo(interaction, "editReply")(message);
+		};
+		// Send ephemeral message
+		const sendPrivate = async (message: InteractionReplyOptions) => {
+			await defer;
+			await wrapInteractionDo(interaction, "deleteReply")();
+			return await wrapInteractionDo(
+				interaction,
+				"followUp",
+			)({ ...message, flags: [MessageFlags.Ephemeral] });
+		};
+
 		try {
 			const generatedMessage = await this.#generateMessage(prompt, target?.id);
 			if (generatedMessage) {
-				const response = await wrapInteractionDo(
-					interaction,
-					"reply",
-				)({
+				const response = await sendPublic({
 					content: generatedMessage.content,
 					allowedMentions: { parse: [] }, // silence mentions
-					withResponse: true,
 				});
 				Sentry.logger.info("Generated message from Markov model", {
 					sentence: generatedMessage.content,
 					citations: generatedMessage.citations.length,
 				});
-				if (!response.resource?.message?.id) {
-					throw new Error("Message ID of interaction response is missing");
-				}
-				this.#citations.set(response.resource.message.id, generatedMessage.citations);
+				this.#citations.set(response.id, generatedMessage.citations);
 			} else {
 				// Failed to generate sentence
 				const targetMention = target ? `from ${userMention(target.id)}` : "";
-				await wrapInteractionDo(
-					interaction,
-					"reply",
-				)({
+				await sendPrivate({
 					content: `⚠️ Error: cannot extrapolate from "${prompt}".
 No messages in the database were found ${targetMention} which start with the prompt.`,
-					flags: [MessageFlags.Ephemeral],
 				});
 			}
 		} catch (err) {
 			Sentry.captureException(err, { extra: { metadata } });
 			const message = err instanceof Error ? err.message : String(err);
-			await (interaction.replied ? interaction.followUp : interaction.reply)({
-				content: `⚠️ Error: ${message}`,
-				flags: [MessageFlags.Ephemeral],
-			});
+			await sendPrivate({ content: `⚠️ Error: ${message}` });
 		}
 	}
 
