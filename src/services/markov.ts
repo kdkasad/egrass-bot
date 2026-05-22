@@ -346,13 +346,26 @@ No messages in the database were found ${targetMention} which start with the pro
 			}, [])
 			.map((c) => ({ ...c, token: c.token.trim() }))
 			.filter((c) => c.token !== "");
-		const rendered = deduplicatedCitations
-			.map((c) => `- ${c.token}: ${messageLink(c.channelId, c.messageId, c.guildId)}`)
-			.join("\n");
-		await interaction.reply({
-			content: `Cited ${deduplicatedCitations.length} messages:\n${rendered}`,
-			allowedMentions: { parse: [] },
-		});
+		let rendered = `Cited ${deduplicatedCitations.length} messages:`;
+		let first = true;
+		for (const c of deduplicatedCitations) {
+			const line = `\n- ${c.token}: ${messageLink(c.channelId, c.messageId, c.guildId)}`;
+			if (rendered.length + line.length > 2000) {
+				await wrapInteractionDo(
+					interaction,
+					first ? "reply" : "followUp",
+				)({ content: rendered, allowedMentions: { parse: [] } });
+				first = false;
+				rendered = "";
+			}
+			rendered += line;
+		}
+		if (rendered.length > 0) {
+			await wrapInteractionDo(
+				interaction,
+				first ? "reply" : "followUp",
+			)({ content: rendered, allowedMentions: { parse: [] } });
+		}
 		Sentry.logger.info("Message citation processed", {
 			"citations.length": deduplicatedCitations.length,
 			"discord.message.id": message.id,
