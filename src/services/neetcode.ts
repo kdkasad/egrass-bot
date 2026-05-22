@@ -899,7 +899,7 @@ ${this.#formatProblemURLs(problems)}`,
 					)
 					.returning({ solveTime: solvesTable.solve_time });
 				const deletedSolveTime = deletedRows[0]?.solveTime;
-				const newFirstSolve = await tx.query.solves.findFirst({
+				const newFirstSolve = await tx.query.neetcodeSolves.findFirst({
 					where: and(
 						eq(solvesTable.announcement_id, reaction.message.id),
 						isNotNull(solvesTable.solve_time),

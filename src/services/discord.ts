@@ -12,6 +12,10 @@ import {
 	type UserResolvable,
 	MessagePayload,
 	type MessageCreateOptions,
+	type RESTPostAPIApplicationCommandsJSONBody,
+	ApplicationCommand,
+	type RESTPostAPIContextMenuApplicationCommandsJSONBody,
+	MessageContextMenuCommandInteraction,
 } from "discord.js";
 import * as Sentry from "@sentry/bun";
 import { Feature } from "../utils/service";
@@ -318,14 +322,16 @@ export class DiscordService extends Feature {
 		}
 
 		// Remove all registered commands
-		await Promise.all(
-			this.client.guilds.cache.values().map(async (guild) => {
-				await guild.commands.set([]);
-				Sentry.logger.info("Removed commands from guild", {
-					"guild.id": guild.id,
-				});
-			}),
-		);
+		const removeGuildCommands = this.client.guilds.cache.values().map(async (guild) => {
+			await guild.commands.set([]);
+			Sentry.logger.info("Removed commands from guild", {
+				"guild.id": guild.id,
+			});
+		});
+		const removeGlobalCommands = this.client.application.commands
+			.set([])
+			.then(() => Sentry.logger.info("Un-registered existing application commands"));
+		await Promise.all([...removeGuildCommands, removeGlobalCommands]);
 	}
 
 	/**
@@ -342,29 +348,25 @@ export class DiscordService extends Feature {
 		};
 	}
 
-	@traced()
-	async registerSlashCommand(
-		command: JSONEncodable<RESTPostAPIChatInputApplicationCommandsJSONBody>,
-		handler: (interaction: ChatInputCommandInteraction) => Promise<void>,
+	async #registerApplicationCommand<T>(
+		commandData: JSONEncodable<RESTPostAPIApplicationCommandsJSONBody>,
+		handler: (interaction: T) => Promise<void>,
 	) {
-		const commandName = command.toJSON().name;
-		// Register command in all guilds
-		await Promise.all(
-			this.client.guilds.cache.values().map(async (guild) => {
-				const metadata = {
-					"discord.command.name": command.toJSON().name,
-					"discord.guild.id": guild.id,
-					"discord.guild.name": guild.name,
-				};
-				try {
-					await guild.commands.create(command);
-					Sentry.logger.info("Registered command with guild", metadata);
-				} catch (e) {
-					Sentry.captureException(e);
-					Sentry.logger.error("Failed to register command", metadata);
-				}
-			}),
-		);
+		const json = commandData.toJSON();
+		let command: ApplicationCommand;
+		try {
+			command = await this.client.application.commands.create(json);
+			Sentry.logger.info("Registered application command", {
+				"discord.command.name": json.name,
+				"discord.command.id": command.id,
+			});
+		} catch (e) {
+			Sentry.captureException(e);
+			Sentry.logger.error("Failed to register application command", {
+				"discord.command.name": json.name,
+			});
+			return;
+		}
 		// Create interaction handler
 		this.client.on("interactionCreate", async (interaction) => {
 			Sentry.startSpan(
@@ -375,18 +377,40 @@ export class DiscordService extends Feature {
 					attributes: {
 						"interaction.id": interaction.id,
 						"interaction.type": InteractionType[interaction.type],
+						"user.id": interaction.user.id,
+						"user.name": interaction.user.displayName,
+						...(interaction.isCommand()
+							? {
+									"interaction.command.id": interaction.commandId,
+									"interaction.command.name": interaction.commandName,
+								}
+							: {}),
 					},
 				},
 				async () => {
-					if (
-						interaction.isChatInputCommand() &&
-						interaction.commandName == commandName
-					) {
-						return Sentry.withIsolationScope(() => handler(interaction));
+					if (interaction.isCommand() && interaction.commandId === command.id) {
+						// We assume that since the command IDs match, the type is correct
+						return Sentry.withIsolationScope(() => handler(interaction as T));
 					}
 				},
 			);
 		});
+	}
+
+	@traced()
+	async registerSlashCommand(
+		command: JSONEncodable<RESTPostAPIChatInputApplicationCommandsJSONBody>,
+		handler: (interaction: ChatInputCommandInteraction) => Promise<void>,
+	) {
+		return this.#registerApplicationCommand(command, handler);
+	}
+
+	@traced()
+	async registerMessageCommand(
+		command: JSONEncodable<RESTPostAPIContextMenuApplicationCommandsJSONBody>,
+		handler: (interaction: MessageContextMenuCommandInteraction) => Promise<void>,
+	) {
+		return this.#registerApplicationCommand(command, handler);
 	}
 
 	@traced()

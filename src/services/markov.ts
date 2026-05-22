@@ -1,8 +1,12 @@
 import * as Sentry from "@sentry/bun";
 
 import {
+	ApplicationCommandType,
 	ChatInputCommandInteraction,
+	ContextMenuCommandBuilder,
+	MessageContextMenuCommandInteraction,
 	MessageFlags,
+	messageLink,
 	SlashCommandBuilder,
 	userMention,
 	type Message,
@@ -14,8 +18,9 @@ import type { EnvService } from "./env";
 import { traced, wrapInteractionDo } from "../utils/tracing";
 import type { DatabaseService, Transaction } from "./database";
 import { Tokenizr } from "tokenizr";
-import { markov4 } from "../db/schema";
+import { markov4, messages } from "../db/schema";
 import { and, eq, sql } from "drizzle-orm";
+import { BoundedMap } from "../utils/bounded-map";
 
 enum Tokens {
 	Space = "space",
@@ -24,7 +29,18 @@ enum Tokens {
 	Eof = "EOF",
 }
 
-export const commandSpec = new SlashCommandBuilder()
+interface TokenWithCitation {
+	token: string;
+	messageId: string;
+	channelId: string;
+	guildId: string;
+}
+interface GeneratedMessage {
+	content: string;
+	citations: TokenWithCitation[];
+}
+
+const slashCommandSpec = new SlashCommandBuilder()
 	.setName("imitate")
 	.setDescription("Imitate a server member using the Markov model")
 	.addStringOption((option) =>
@@ -36,6 +52,10 @@ export const commandSpec = new SlashCommandBuilder()
 	.addUserOption((option) =>
 		option.setName("user").setDescription("User to imitate (optional)").setRequired(false),
 	);
+
+const citeCommandSpec = new ContextMenuCommandBuilder()
+	.setType(ApplicationCommandType.Message)
+	.setName("Cite");
 
 export class CannotExtrapolate extends Error {
 	public prompt: string;
@@ -50,6 +70,7 @@ export class MarkovService extends Feature {
 	#db: DatabaseService;
 	#discord: DiscordService;
 	#tokenizer: Tokenizr;
+	#citations: BoundedMap<string, TokenWithCitation[]> = new BoundedMap(500);
 
 	constructor(env: EnvService, discord: DiscordService, db: DatabaseService) {
 		super(env);
@@ -63,12 +84,15 @@ export class MarkovService extends Feature {
 			);
 			// We don't need to handle message:delete events because the markov4 table has ON DELETE CASCADE.
 
-			// Register the slash command. This will run asynchronously.
-			this.#discord
-				.registerSlashCommand(commandSpec, (interaction) =>
+			// Register the commands. This will run asynchronously.
+			Promise.all([
+				this.#discord.registerSlashCommand(slashCommandSpec, (interaction) =>
 					this.#handleSlashCommand(interaction),
-				)
-				.then(() => Sentry.logger.info("MarkovService initialized"));
+				),
+				this.#discord.registerMessageCommand(citeCommandSpec, (interaction) =>
+					this.#handleCite(interaction),
+				),
+			]).then(() => Sentry.logger.info("MarkovService initialized"));
 		} else {
 			Sentry.logger.info("MarkovService disabled");
 		}
@@ -162,16 +186,24 @@ export class MarkovService extends Feature {
 		};
 		Sentry.getActiveSpan()?.setAttributes(metadata);
 		try {
-			const sentence = await this.#generateSentence(prompt, target?.id);
-			if (sentence) {
-				await wrapInteractionDo(
+			const generatedMessage = await this.#generateMessage(prompt, target?.id);
+			if (generatedMessage) {
+				const response = await wrapInteractionDo(
 					interaction,
 					"reply",
 				)({
-					content: sentence,
+					content: generatedMessage.content,
 					allowedMentions: { parse: [] }, // silence mentions
+					withResponse: true,
 				});
-				Sentry.logger.info("Generated sentence", { sentence });
+				Sentry.logger.info("Generated message from Markov model", {
+					sentence: generatedMessage.content,
+					citations: generatedMessage.citations.length,
+				});
+				if (!response.resource?.message?.id) {
+					throw new Error("Message ID of interaction response is missing");
+				}
+				this.#citations.set(response.resource.message.id, generatedMessage.citations);
 			} else {
 				// Failed to generate sentence
 				const targetMention = target ? `from ${userMention(target.id)}` : "";
@@ -195,13 +227,14 @@ No messages in the database were found ${targetMention} which start with the pro
 	}
 
 	/**
-	 * Generates a sentence using the Markov model.
+	 * Generates a message using the Markov model.
 	 * @param prompt prompt to start the sentence with
 	 * @param authorId optional author ID to filter on
 	 * @returns the generated sentence, or null if the given prompt could not be expanded
 	 */
-	async #generateSentence(prompt: string, authorId?: string): Promise<string | null> {
+	async #generateMessage(prompt: string, authorId?: string): Promise<GeneratedMessage | null> {
 		const tokens = Array.from(this.#tokenize(prompt));
+		const citations: TokenWithCitation[] = [];
 		let isFirstToken = true;
 		await this.#db.query("extrapolate markov message", async (tx) => {
 			while (true) {
@@ -215,7 +248,8 @@ No messages in the database were found ${targetMention} which start with the pro
 				);
 				if (token === null) break;
 				isFirstToken = false;
-				tokens.push(token);
+				tokens.push(token.token);
+				citations.push(token);
 				if (tokens.length > 1000) {
 					throw new Error("runaway message");
 				}
@@ -224,7 +258,7 @@ No messages in the database were found ${targetMention} which start with the pro
 		if (isFirstToken) {
 			return null;
 		}
-		return tokens.join("");
+		return { content: tokens.join(""), citations };
 	}
 
 	/**
@@ -240,7 +274,7 @@ No messages in the database were found ${targetMention} which start with the pro
 		word2: string | null,
 		word3: string | null,
 		word4: string | null,
-	): Promise<string | null> {
+	): Promise<TokenWithCitation | null> {
 		const filter = and(
 			sql`${markov4.word1} IS ${word1}`,
 			sql`${markov4.word2} IS ${word2}`,
@@ -253,11 +287,75 @@ No messages in the database were found ${targetMention} which start with the pro
 		if (count == 0) return null;
 		const offset = Math.floor(Math.random() * count);
 		const result = await tx
-			.select({ nextWord: markov4.word5 })
+			.select({
+				token: markov4.word5,
+				messageId: markov4.message_id,
+				channelId: messages.channel_id,
+				guildId: messages.guild_id,
+			})
 			.from(markov4)
+			.innerJoin(messages, eq(markov4.message_id, messages.id))
 			.where(filter)
 			.limit(1)
 			.offset(offset);
-		return result[0]?.nextWord ?? null;
+		if (result.length < 1 || result[0].token === null) return null;
+		return { ...result[0], token: result[0].token! };
+	}
+
+	@traced("event.handler")
+	async #handleCite(interaction: MessageContextMenuCommandInteraction) {
+		const replyErr = async (message: string) => {
+			await interaction.reply({
+				content: `⚠️ Error: ${message}`,
+				flags: [MessageFlags.Ephemeral],
+			});
+		};
+
+		const message = interaction.targetMessage;
+		Sentry.logger.info("Message citation requested", {
+			"discord.message.id": message.id,
+			"discord.channel.id": interaction.channelId,
+			"discord.user.id": interaction.user.id,
+		});
+
+		if (message.author.id !== interaction.client.user.id) {
+			return replyErr("I can only cite messages sent by me");
+		}
+
+		const citations = this.#citations.get(message.id);
+		if (citations === undefined) {
+			Sentry.logger.warn("No citations found for message", {
+				"discord.message.id": message.id,
+			});
+			return replyErr(
+				"No citations found for this message.\n" +
+					"Either it is too old and the citations have been forgotten, " +
+					"or it is not an imitation.",
+			);
+		}
+
+		const deduplicatedCitations = citations
+			.reduce<TokenWithCitation[]>((acc, cur) => {
+				const last = acc.at(-1);
+				if (last?.messageId === cur.messageId) {
+					last.token += cur.token;
+				} else {
+					acc.push(cur);
+				}
+				return acc;
+			}, [])
+			.map((c) => ({ ...c, token: c.token.trim() }))
+			.filter((c) => c.token !== "");
+		const rendered = deduplicatedCitations
+			.map((c) => `- ${c.token}: ${messageLink(c.channelId, c.messageId, c.guildId)}`)
+			.join("\n");
+		await interaction.reply({
+			content: `Cited ${deduplicatedCitations.length} messages:\n${rendered}`,
+			allowedMentions: { parse: [] },
+		});
+		Sentry.logger.info("Message citation processed", {
+			"citations.length": deduplicatedCitations.length,
+			"discord.message.id": message.id,
+		});
 	}
 }
