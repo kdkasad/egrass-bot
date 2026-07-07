@@ -12,3 +12,5 @@ export { CronService } from "./cron";
 export { NeetcodeService } from "./neetcode";
 export { HTTPService } from "./http";
 export { MinecraftService } from "./minecraft";
+export { ExchangeService } from "./exchange";
+

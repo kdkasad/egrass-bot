@@ -43,6 +43,13 @@
       "when": 1777651838627,
       "tag": "0005_third_tenebrous",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783538200042,
+      "tag": "0006_brave_khan",
+      "breakpoints": true
     }
   ]
 }

@@ -106,3 +106,24 @@ export const mutes = sqliteTable("mutes", {
 	user_id: text("user_id").primaryKey(),
 	expires_at: integer("expires_at").notNull(),
 });
+
+export const exchangeBalances = sqliteTable("exchange_balances", {
+	user_id: text("user_id")
+		.primaryKey()
+		.references(() => members.id),
+	balance: integer("balance").notNull().default(0),
+});
+
+export const exchangeTransactions = sqliteTable("exchange_transactions", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	sender_id: text("sender_id").references(() => members.id),
+	recipient_id: text("recipient_id")
+		.notNull()
+		.references(() => members.id),
+	amount: integer("amount").notNull(),
+	timestamp: integer("timestamp").notNull(),
+	memo: text("memo").notNull(),
+	message_id: text("message_id"),
+});
+
+
