@@ -23,12 +23,23 @@ import {
 	messages,
 } from "../db/schema";
 
+function formatMoney(amount: number): string {
+	const format = Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		currencyDisplay: "narrowSymbol",
+		trailingZeroDisplay: "stripIfInteger",
+	});
+	return format.format(amount);
+}
+
 export class InsufficientBalanceError extends Error {
 	need: number;
 	have: number;
 	constructor(need: number, have: number) {
-		const difference = need - have;
-		super(`Insufficient balance: need $${need}, have $${have} (short $${difference})`);
+		super(
+			`Insufficient balance: need ${formatMoney(need)}, have ${formatMoney(have)} (short ${formatMoney(need - have)})`,
+		);
 		this.need = need;
 		this.have = have;
 		this.name = "InsufficientBalanceError";
@@ -353,8 +364,8 @@ export class ExchangeService extends Feature {
 		const balance = balanceRow[0]?.balance ?? 0;
 		const isSelf = targetUser.id === interaction.user.id;
 		const responseText = isSelf
-			? `💰 Your current balance is **$${balance}**.`
-			: `💰 ${userMention(targetUser.id)}'s current balance is **$${balance}**.`;
+			? `💰 You have **$${formatMoney(balance)}**.`
+			: `💰 ${userMention(targetUser.id)} has **${formatMoney(balance)}**.`;
 
 		await wrapInteractionDo(
 			interaction,
@@ -401,7 +412,7 @@ export class ExchangeService extends Feature {
 				interaction,
 				"reply",
 			)({
-				content: `💸 ${userMention(sender.id)} transferred **$${amount}** to ${userMention(recipient.id)}\n> *${memo}*`,
+				content: `💸 ${userMention(sender.id)} transferred **${formatMoney(amount)}** to ${userMention(recipient.id)}\n> *${memo}*`,
 				withResponse: true,
 			});
 
