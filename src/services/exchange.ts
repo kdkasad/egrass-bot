@@ -413,6 +413,7 @@ export class ExchangeService extends Feature {
 				"reply",
 			)({
 				content: `💸 ${userMention(sender.id)} transferred **${formatMoney(amount)}** to ${userMention(recipient.id)}\n> *${memo}*`,
+				allowedMentions: { users: [sender.id, recipient.id] },
 				withResponse: true,
 			});
 
