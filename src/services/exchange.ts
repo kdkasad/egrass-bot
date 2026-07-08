@@ -7,7 +7,7 @@ import {
 	type OmitPartialGroupDMChannel,
 	type Message,
 } from "discord.js";
-import { count, eq, sql, notInArray } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import z from "zod";
 
 import { Feature } from "../utils/service";
@@ -15,13 +15,13 @@ import { traced, wrapInteractionDo } from "../utils/tracing";
 import type { DatabaseService } from "./database";
 import type { DiscordService } from "./discord";
 import type { EnvService } from "./env";
+import type { TrackingService } from "./tracking";
 import {
 	exchangeBalances,
 	exchangeTransactions,
 	members as membersTable,
 	messages,
 } from "../db/schema";
-import { Guilds } from "../consts";
 
 export class InsufficientBalanceError extends Error {
 	need: number;
@@ -79,11 +79,18 @@ export class ExchangeService extends Feature {
 
 	#discord: DiscordService;
 	#db: DatabaseService;
+	#tracking: TrackingService;
 
-	constructor(env: EnvService, discord: DiscordService, db: DatabaseService) {
+	constructor(
+		env: EnvService,
+		discord: DiscordService,
+		db: DatabaseService,
+		tracking: TrackingService,
+	) {
 		super(env);
 		this.#discord = discord;
 		this.#db = db;
+		this.#tracking = tracking;
 
 		if (this.isEnabled()) {
 			this.#discord.registerSlashCommand(ExchangeService.#commandSpec, (i) =>
@@ -106,6 +113,9 @@ export class ExchangeService extends Feature {
 	@traced()
 	private async init() {
 		try {
+			// Wait for the startup guild member scan to complete in TrackingService
+			await this.#tracking.waitUntilMemberScanDone();
+
 			// One-time retroactive seeding on very first run
 			const transactionCount = await this.#db.query("count transactions", (tx) =>
 				tx.$count(exchangeTransactions),
@@ -127,16 +137,9 @@ export class ExchangeService extends Feature {
 	private async awardRetroactiveMessageIncome() {
 		Sentry.logger.info("Starting retroactive historical message seeding...");
 
-		// Find bot member IDs
-		const guild = await this.#discord.client.guilds.fetch(Guilds.Egrass);
-		const guildMembers = await guild.members.fetch();
-		const botIdsArray = guildMembers
-			.filter((member) => member.user.bot)
-			.map((member) => member.id);
-
 		const sqlNull = sql<null>`NULL`;
 		await this.#db.query("retroactive seeding transaction", async (tx) => {
-			// 1. Insert message rewards as transactions (joined with members to enforce FK constraint)
+			// 1. Insert message rewards as transactions (joined with members to enforce FK constraint and exclude bots)
 			await tx.insert(exchangeTransactions).select(
 				tx
 					.select({
@@ -151,8 +154,8 @@ export class ExchangeService extends Feature {
 					.from(messages)
 					// inner join is to only select messages from existing members
 					.innerJoin(membersTable, eq(messages.author_id, membersTable.id))
-					.groupBy(messages.author_id)
-					.having(notInArray(messages.author_id, botIdsArray)),
+					.where(eq(membersTable.is_bot, false))
+					.groupBy(messages.author_id),
 			);
 
 			// 2. Insert transactions as balances

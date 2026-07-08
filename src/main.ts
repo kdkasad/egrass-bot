@@ -57,7 +57,7 @@ async function main() {
 	const neetcode = new NeetcodeService(env, discord, database, cron);
 	const http = new HTTPService(env, discord, database);
 	const minecraft = new MinecraftService(env, discord, database);
-	const exchange = new ExchangeService(env, discord, database);
+	const exchange = new ExchangeService(env, discord, database, tracking);
 	const signalHandler = new SignalHandlerService(discord, database, http);
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 	(void signalHandler, explode, tracking, markov, keyword, query, troll, neetcode, minecraft, exchange);

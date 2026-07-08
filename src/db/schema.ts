@@ -77,6 +77,7 @@ export const members = sqliteTable("members", {
 	id: text("id").primaryKey(),
 	display_name: text("display_name").notNull(),
 	username: text("username").notNull(),
+	is_bot: integer("is_bot", { mode: "boolean" }).notNull().default(false),
 });
 
 export const sql_responses = sqliteTable("sql_responses", {
@@ -125,5 +126,3 @@ export const exchangeTransactions = sqliteTable("exchange_transactions", {
 	memo: text("memo").notNull(),
 	message_id: text("message_id"),
 });
-
-

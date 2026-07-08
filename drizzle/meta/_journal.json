@@ -50,6 +50,13 @@
       "when": 1783538200042,
       "tag": "0006_brave_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783539983694,
+      "tag": "0007_round_famine",
+      "breakpoints": true
     }
   ]
 }
