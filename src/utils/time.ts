@@ -37,3 +37,39 @@ export function dateToSqlite(date: Date): number {
 export function sqliteToDate(timestamp: number): Date {
 	return new Date(timestamp * 1000);
 }
+
+export interface TimeSpan {
+	days?: number;
+	hours?: number;
+	minutes?: number;
+	seconds?: number;
+	milliseconds?: number;
+}
+
+export abstract class TimeSource {
+	abstract now(): Date;
+}
+
+export class ClockTimeSource extends TimeSource {
+	now() {
+		return new Date();
+	}
+}
+
+export class MockTimeSource extends TimeSource {
+	#now: Date = new Date(0);
+	now() {
+		return this.#now;
+	}
+	setTime(time: Date) {
+		this.#now = time;
+	}
+	advance({ days, hours, minutes, seconds, milliseconds }: TimeSpan) {
+		let total = milliseconds ?? 0;
+		if (seconds) total += seconds * 1000;
+		if (minutes) total += minutes * 1000 * 60;
+		if (hours) total += hours * 1000 * 60 * 60;
+		if (days) total += days * 1000 * 60 * 60 * 24;
+		this.#now = new Date(this.#now.getTime() + total);
+	}
+}
