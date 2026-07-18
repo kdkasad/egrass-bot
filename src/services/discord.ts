@@ -16,6 +16,9 @@ import {
 	ApplicationCommand,
 	type RESTPostAPIContextMenuApplicationCommandsJSONBody,
 	MessageContextMenuCommandInteraction,
+	type RepliableInteraction,
+	ButtonInteraction,
+	ModalSubmitInteraction,
 } from "discord.js";
 import * as Sentry from "@sentry/bun";
 import { Feature } from "../utils/service";
@@ -221,9 +224,13 @@ type EventHandler<K extends keyof Events> = (...data: Events[K]) => Promise<void
 
 export class DiscordService extends Feature {
 	readonly client: Client<true>;
-	private handlers: {
+	private eventHandlers: {
 		[K in keyof Events]?: EventHandler<K>[];
 	} = {};
+	#buttonHandlers: Record<string, (interaction: ButtonInteraction) => Promise<void>> = {};
+	#buttonDispatcherCreated: boolean = false;
+	#modalHandlers: Record<string, (interaction: ModalSubmitInteraction) => Promise<void>> = {};
+	#modalDispatcherCreated: boolean = false;
 
 	/**
 	 * Private constructor, used to construct class once ready client is created.
@@ -288,7 +295,7 @@ export class DiscordService extends Feature {
 					} catch (e) {
 						Sentry.captureException(e);
 					}
-					const handlers = this.handlers[ourName as keyof Events] ?? [];
+					const handlers = this.eventHandlers[ourName as keyof Events] ?? [];
 					await Promise.allSettled(
 						handlers.map((handler) =>
 							Sentry.withIsolationScope(() =>
@@ -340,7 +347,7 @@ export class DiscordService extends Feature {
 	 * @returns a function which when called, unsubscribes this handler
 	 */
 	subscribe<K extends keyof Events>(key: K, handler: EventHandler<K>): () => void {
-		const list = (this.handlers[key] ??= []) as EventHandler<K>[];
+		const list = (this.eventHandlers[key] ??= []) as EventHandler<K>[];
 		list.push(handler);
 		return () => {
 			const idx = list.indexOf(handler);
@@ -431,5 +438,103 @@ export class DiscordService extends Feature {
 		const channel = await this.client.channels.fetch(channelId);
 		if (!channel?.isSendable()) throw new Error("Channel is not sendable");
 		return channel.send(message);
+	}
+
+	async interactionReply(
+		interaction: RepliableInteraction,
+		...args: Parameters<RepliableInteraction["reply"]>
+	): Promise<ReturnType<RepliableInteraction["reply"]>> {
+		return Sentry.startSpan(
+			{
+				name: `discord.interaction.reply`,
+				op: "discord.send",
+				attributes: {
+					"discord.interaction.id": interaction.id,
+					"discord.user.id": interaction.user.id,
+				},
+			},
+			// eslint-disable-next-line prefer-spread
+			() => interaction.reply.apply(interaction, args),
+		);
+	}
+
+	registerButtonHandler(
+		customIdPrefix: string,
+		handler: (interaction: ButtonInteraction) => Promise<void>,
+	) {
+		if (customIdPrefix in this.#buttonHandlers) {
+			throw new Error(`Button handler for "${customIdPrefix}" is already registered`);
+		}
+		this.#buttonHandlers[customIdPrefix] = handler;
+
+		if (!this.#buttonDispatcherCreated) {
+			this.client.on("interactionCreate", (interaction) => {
+				if (interaction.isButton()) {
+					return Sentry.startSpan(
+						{
+							parentSpan: null,
+							name: "button pressed",
+							op: "discord.event",
+							attributes: {
+								"interaction.id": interaction.id,
+								"interaction.type": InteractionType[interaction.type],
+								"user.id": interaction.user.id,
+								"user.name": interaction.user.displayName,
+								"button.custom_id": interaction.customId,
+							},
+						},
+						() => {
+							const prefix = interaction.customId.split(":")[0]!;
+							const handler = this.#buttonHandlers[prefix];
+							if (!handler) {
+								throw new Error(`No handler registered for button`);
+							}
+							return Sentry.withIsolationScope(() => handler(interaction));
+						},
+					);
+				}
+			});
+			this.#buttonDispatcherCreated = true;
+		}
+	}
+
+	registerModalHandler(
+		customIdPrefix: string,
+		handler: (interaction: ModalSubmitInteraction) => Promise<void>,
+	) {
+		if (customIdPrefix in this.#modalHandlers) {
+			throw new Error(`Modal handler for "${customIdPrefix}" is already registered`);
+		}
+		this.#modalHandlers[customIdPrefix] = handler;
+
+		if (!this.#modalDispatcherCreated) {
+			this.client.on("interactionCreate", (interaction) => {
+				if (interaction.isModalSubmit()) {
+					return Sentry.startSpan(
+						{
+							parentSpan: null,
+							name: "modal submitted",
+							op: "discord.event",
+							attributes: {
+								"interaction.id": interaction.id,
+								"interaction.type": InteractionType[interaction.type],
+								"user.id": interaction.user.id,
+								"user.name": interaction.user.displayName,
+								"modal.custom_id": interaction.customId,
+							},
+						},
+						() => {
+							const prefix = interaction.customId.split(":")[0]!;
+							const handler = this.#modalHandlers[prefix];
+							if (!handler) {
+								throw new Error(`No handler registered for button`);
+							}
+							return Sentry.withIsolationScope(() => handler(interaction));
+						},
+					);
+				}
+			});
+			this.#modalDispatcherCreated = true;
+		}
 	}
 }

@@ -8,6 +8,7 @@ export enum Users {
 
 export enum Roles {
 	Mute = "1463375447927689298",
+	ProblemSetter = "1528409413818519593",
 }
 
 export enum Channels {

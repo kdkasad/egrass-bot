@@ -12,3 +12,4 @@ export { CronService } from "./cron";
 export { HTTPService } from "./http";
 export { MinecraftService } from "./minecraft";
 export { ExchangeService } from "./exchange";
+export { PsetService } from "./pset";

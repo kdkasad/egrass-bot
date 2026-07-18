@@ -14,6 +14,7 @@ import {
 	HTTPService,
 	MinecraftService,
 	ExchangeService,
+	PsetService,
 } from "./services";
 
 async function main() {
@@ -57,8 +58,18 @@ async function main() {
 	const minecraft = new MinecraftService(env, discord, database);
 	const exchange = new ExchangeService(env, discord, database, tracking);
 	const signalHandler = new SignalHandlerService(discord, database, http);
+	const pset = new PsetService(env, discord, database);
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-	(void signalHandler, explode, tracking, markov, keyword, query, troll, minecraft, exchange);
+	(void signalHandler,
+		explode,
+		tracking,
+		markov,
+		keyword,
+		query,
+		troll,
+		minecraft,
+		exchange,
+		pset);
 }
 
 main();
