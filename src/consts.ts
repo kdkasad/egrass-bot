@@ -4,10 +4,12 @@ export enum Users {
 	Atharva = "1007790710042394624",
 	Sophia = "592551894337978369",
 	Cailey = "278316954585137152",
+	Triple_T = "452231251810713600",
 }
 
 export enum Roles {
 	Mute = "1463375447927689298",
+	NighttimeMute = "",
 }
 
 export enum Channels {
