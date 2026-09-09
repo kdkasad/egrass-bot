@@ -11,10 +11,11 @@ import {
 	QueryService,
 	TrollService,
 	CronService,
-	NeetcodeService,
 	HTTPService,
 	MinecraftService,
 	NighttimeMuteService,
+	ExchangeService,
+	PsetService,
 } from "./services";
 
 async function main() {
@@ -54,13 +55,24 @@ async function main() {
 	const keyword = new KeywordNotificationService(env, discord);
 	const query = new QueryService(env, discord, database);
 	const troll = new TrollService(env, discord, database);
-	const neetcode = new NeetcodeService(env, discord, database, cron);
 	const http = new HTTPService(env, discord, database);
 	const minecraft = new MinecraftService(env, discord, database);
 	const nighttimeMute = new NighttimeMuteService(env, discord, cron);
+	const exchange = new ExchangeService(env, discord, database, tracking);
 	const signalHandler = new SignalHandlerService(discord, database, http);
+	const pset = new PsetService(env, discord, database);
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
-	(void signalHandler, explode, tracking, markov, keyword, query, troll, neetcode, minecraft, nighttimeMute);
+	(void signalHandler,
+		explode,
+		tracking,
+		markov,
+		keyword,
+		query,
+		troll,
+    minecraft,
+		nighttimeMute,
+		exchange,
+		pset);
 }
 
 main();

@@ -21,6 +21,7 @@ import { Guilds } from "../consts";
 
 export class TrackingService extends Service {
 	#db: DatabaseService;
+	private memberScanPromise: Promise<void>;
 
 	constructor(discord: DiscordService, db: DatabaseService) {
 		super();
@@ -31,7 +32,11 @@ export class TrackingService extends Service {
 		discord.subscribe("reaction:delete", (r, u) => this.#handleReactionDelete(r, u));
 		discord.subscribe("member:join", (m) => this.#handleMemberJoinOrUpdate(m));
 		discord.subscribe("member:update", (_, m) => this.#handleMemberJoinOrUpdate(m));
-		this.#upsertAllMembers(discord);
+		this.memberScanPromise = this.#upsertAllMembers(discord);
+	}
+
+	public waitUntilMemberScanDone(): Promise<void> {
+		return this.memberScanPromise;
 	}
 
 	@traced("event.handler")
@@ -122,6 +127,7 @@ export class TrackingService extends Service {
 			id: member.id,
 			display_name: member.displayName,
 			username: member.user.username,
+			is_bot: member.user.bot,
 		};
 		this.#db.query("upsert member", (tx) =>
 			tx.insert(membersTable).values(record).onConflictDoUpdate({
@@ -138,12 +144,13 @@ export class TrackingService extends Service {
 	async #upsertAllMembers(discord: DiscordService) {
 		const guild = await discord.client.guilds.fetch(Guilds.Egrass);
 		const members = await guild.members.fetch();
-		this.#db.query("upsert all members", async (tx) => {
+		await this.#db.query("upsert all members", async (tx) => {
 			for (const member of members.values()) {
 				const record = {
 					id: member.id,
 					display_name: member.displayName,
 					username: member.user.username,
+					is_bot: member.user.bot,
 				};
 				await tx.insert(membersTable).values(record).onConflictDoUpdate({
 					target: membersTable.id,
