@@ -10,7 +10,7 @@ export enum Users {
 export enum Roles {
 	Mute = "1463375447927689298",
 	NighttimeMute = "",
-	ProblemSetter = "1528409413818519593",
+	NighttimeRestricted = "",
 }
 
 export enum Channels {

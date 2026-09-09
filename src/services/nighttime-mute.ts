@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/bun";
 
-import { Guilds, Roles, Users } from "../consts";
+import { Guilds, Roles } from "../consts";
 import { traced } from "../utils/tracing";
 import { Feature } from "../utils/service";
 import type { CronService } from "./cron";
@@ -44,12 +44,21 @@ export class NighttimeMuteService extends Feature {
 	async #applyRestriction() {
 		try {
 			const guild = await this.#discord.client.guilds.fetch(Guilds.Egrass);
-			const member = await guild.members.fetch(Users.Triple_T);
-			await member.roles.add(Roles.NighttimeMute, "nighttime restriction started");
-			Sentry.logger.info("Nighttime restriction applied", { "user.id": Users.Triple_T });
+			const members = await guild.members.fetch();
+			const membersToRestrict = members.filter((member) =>
+				member.roles.cache.has(Roles.NighttimeMute),
+			);
+			await Promise.all(
+				membersToRestrict.map((member) =>
+					member.roles.add(Roles.NighttimeRestricted, "nighttime restriction started"),
+				),
+			);
+			Sentry.logger.info("Nighttime restriction applied", {
+				"nighttime-mute.member_count": membersToRestrict.size,
+			});
 		} catch (err) {
 			Sentry.logger.error(
-				Sentry.logger.fmt`Failed to apply nighttime restriction to ${Users.Triple_T}: ${err instanceof Error ? err.message : String(err)}`,
+				Sentry.logger.fmt`Failed to apply nighttime restriction: ${err instanceof Error ? err.message : String(err)}`,
 			);
 			Sentry.captureException(err);
 		}
@@ -59,12 +68,21 @@ export class NighttimeMuteService extends Feature {
 	async #removeRestriction() {
 		try {
 			const guild = await this.#discord.client.guilds.fetch(Guilds.Egrass);
-			const member = await guild.members.fetch(Users.Triple_T);
-			await member.roles.remove(Roles.NighttimeMute, "nighttime restriction ended");
-			Sentry.logger.info("Nighttime restriction removed", { "user.id": Users.Triple_T });
+			const members = await guild.members.fetch();
+			const restrictedMembers = members.filter((member) =>
+				member.roles.cache.has(Roles.NighttimeRestricted),
+			);
+			await Promise.all(
+				restrictedMembers.map((member) =>
+					member.roles.remove(Roles.NighttimeRestricted, "nighttime restriction ended"),
+				),
+			);
+			Sentry.logger.info("Nighttime restriction removed", {
+				"nighttime-mute.member_count": restrictedMembers.size,
+			});
 		} catch (err) {
 			Sentry.logger.error(
-				Sentry.logger.fmt`Failed to remove nighttime restriction from ${Users.Triple_T}: ${err instanceof Error ? err.message : String(err)}`,
+				Sentry.logger.fmt`Failed to remove nighttime restriction: ${err instanceof Error ? err.message : String(err)}`,
 			);
 			Sentry.captureException(err);
 		}
