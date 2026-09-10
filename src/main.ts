@@ -13,6 +13,7 @@ import {
 	CronService,
 	HTTPService,
 	MinecraftService,
+	NighttimeMuteService,
 	ExchangeService,
 	PsetService,
 } from "./services";
@@ -56,6 +57,7 @@ async function main() {
 	const troll = new TrollService(env, discord, database);
 	const http = new HTTPService(env, discord, database);
 	const minecraft = new MinecraftService(env, discord, database);
+	const nighttimeMute = new NighttimeMuteService(env, discord, cron);
 	const exchange = new ExchangeService(env, discord, database, tracking);
 	const signalHandler = new SignalHandlerService(discord, database, http);
 	const pset = new PsetService(env, discord, database);
@@ -67,7 +69,8 @@ async function main() {
 		keyword,
 		query,
 		troll,
-		minecraft,
+    minecraft,
+		nighttimeMute,
 		exchange,
 		pset);
 }

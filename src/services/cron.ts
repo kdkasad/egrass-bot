@@ -6,8 +6,9 @@ export class CronService extends Service {
 		name: string,
 		schedule: Bun.CronWithAutocomplete,
 		callback: () => Promise<void>,
+		options?: { timezone?: string },
 	): Bun.CronJob {
-		const job = Bun.cron(schedule, () =>
+		const callbackWrapper = () =>
 			startSpan(
 				{
 					name: `cron.job.${name}`,
@@ -26,8 +27,10 @@ export class CronService extends Service {
 						"cron.job.next": Bun.cron.parse(schedule)?.toString(),
 					});
 				},
-			),
-		);
+			);
+		const job = options === undefined
+			? Bun.cron(schedule, callbackWrapper)
+			: Bun.cron(schedule, options, callbackWrapper);
 		logger.info("Cron job created", {
 			"cron.job.schedule": schedule,
 			"cron.job.name": name,

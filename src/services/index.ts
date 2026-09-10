@@ -11,5 +11,6 @@ export { TrollService } from "./troll";
 export { CronService } from "./cron";
 export { HTTPService } from "./http";
 export { MinecraftService } from "./minecraft";
+export { NighttimeMuteService } from "./nighttime-mute";
 export { ExchangeService } from "./exchange";
 export { PsetService } from "./pset";
