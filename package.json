@@ -12,7 +12,8 @@
 		"watch": "bun run -b --watch .",
 		"lint": "bun run -b eslint",
 		"db:generate": "drizzle-kit generate",
-		"typeck": "bun run -b tsc --noEmit"
+		"typeck": "bun run -b tsc --noEmit",
+		"format": "bun run -b prettier -w ."
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",

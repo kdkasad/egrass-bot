@@ -3,6 +3,7 @@
 A Discord bot for a server with friends.
 
 ## Features
+
 - Daily [NeetCode] challenges
     - Announces each day's problems automatically
     - Tracks solves via "✅" reactions to the announcement message
@@ -26,6 +27,7 @@ A Discord bot for a server with friends.
 [NeetCode]: https://neetcode.io
 
 ## Design
+
 - Stores data in a persistent SQLite3 database
 - Uses Discord's WebSocket API for efficient event-driven communication
 - Containerized using Docker for easy deployment

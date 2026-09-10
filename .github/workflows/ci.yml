@@ -24,8 +24,41 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Type check code
+        run: bun run typeck
+
       - name: Lint code
         run: bun run lint
+
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Cache downloaded dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-cache-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check formatting
+        id: checkformat
+        run: bun run prettier -c .
+
+      - name: Print hint
+        if: failure() && steps.checkformat.outcome == 'failure'
+        run: |
+          echo '::error title=Formatting check failed::Run `bun format` locally and commit the changes.'
 
   build:
     name: Build Docker image
