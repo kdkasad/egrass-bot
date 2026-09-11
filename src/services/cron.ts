@@ -28,6 +28,7 @@ export class CronService extends Service {
 				},
 			),
 		);
+		job.unref();
 		logger.info("Cron job created", {
 			"cron.job.schedule": schedule,
 			"cron.job.name": name,
