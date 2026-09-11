@@ -123,15 +123,26 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+    permissions:
+      id-token: write
     steps:
+      - name: Connect to Tailscale VPN
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+          ping: ${{ secrets.SSH_HOST }}
+
       - name: Trigger restart
         run: |
           eval $(ssh-agent)
           ssh-add - <<< "$SSH_PRIVATE_KEY"
-          cat > /tmp/known_hosts <<< "$SSH_HOST_KEY"
-          ssh -o UserKnownHostsFile=/tmp/known_hosts -o StrictHostKeyChecking=yes -o UpdateHostKeys=no -p $PORT $HOST
+          cat > /tmp/known_hosts <<< "[$HOST]:$PORT $SSH_HOST_KEY"
+          ssh -o UserKnownHostsFile=/tmp/known_hosts -o StrictHostKeyChecking=yes -o UpdateHostKeys=no -p $PORT ${USER}@${HOST}
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_HOST_KEY: ${{ secrets.SSH_HOST_KEY }}
           PORT: ${{ secrets.SSH_PORT }}
+          USER: ${{ secrets.SSH_USER }}
           HOST: ${{ secrets.SSH_HOST }}
