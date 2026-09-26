@@ -1,0 +1,1 @@
+CREATE VIEW `messages_with_author` AS select "members"."display_name", "members"."username", "messages"."id", "messages"."guild_id", "messages"."channel_id", "messages"."author_id", "messages"."timestamp", "messages"."content", "messages"."replies_to", "messages"."is_poll" from "messages" left join "members" on "messages"."author_id" = "members"."id";

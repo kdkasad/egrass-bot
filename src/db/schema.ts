@@ -167,3 +167,14 @@ export const pollResponses = sqliteTable(
 		index("idx_poll_responses").on(t.message_id, t.choice_id),
 	],
 );
+
+export const messagesWithAuthor = sqliteView("messages_with_author").as((qb) => {
+	return qb
+		.select({
+			display_name: members.display_name,
+			username: members.username,
+			...getTableColumns(messages),
+		})
+		.from(messages)
+		.leftJoin(members, eq(messages.author_id, members.id));
+});
