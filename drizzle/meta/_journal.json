@@ -57,6 +57,13 @@
       "when": 1783539983694,
       "tag": "0007_round_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790460897834,
+      "tag": "0008_minor_purple_man",
+      "breakpoints": true
     }
   ]
 }

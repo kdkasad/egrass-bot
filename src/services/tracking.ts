@@ -9,14 +9,22 @@ import {
 	type OmitPartialGroupDMChannel,
 	type PartialMessage,
 	type PartialMessageReaction,
+	type PartialPollAnswer,
 	type PartialUser,
+	type PollAnswer,
 } from "discord.js";
 
 import { Service } from "../utils/service";
 import { traced } from "../utils/tracing";
 import type { DatabaseService } from "./database";
 import type { DiscordService } from "./discord";
-import { members as membersTable, messages, reactions } from "../db/schema";
+import {
+	members as membersTable,
+	messages,
+	pollChoices,
+	pollResponses,
+	reactions,
+} from "../db/schema";
 import { Guilds } from "../consts";
 
 export class TrackingService extends Service {
@@ -30,6 +38,8 @@ export class TrackingService extends Service {
 		discord.subscribe("message:delete", (msg) => this.#handleMessageDelete(msg));
 		discord.subscribe("reaction:create", (r, u) => this.#handleReactionCreate(r, u));
 		discord.subscribe("reaction:delete", (r, u) => this.#handleReactionDelete(r, u));
+		discord.subscribe("poll:vote:create", (a, u) => this.#handlePollVoteCreate(a, u));
+		discord.subscribe("poll:vote:delete", (a, u) => this.#handlePollVoteDelete(a, u));
 		discord.subscribe("member:join", (m) => this.#handleMemberJoinOrUpdate(m));
 		discord.subscribe("member:update", (_, m) => this.#handleMemberJoinOrUpdate(m));
 		this.memberScanPromise = this.#upsertAllMembers(discord);
@@ -52,16 +62,28 @@ export class TrackingService extends Service {
 			message.reference?.messageId && message.reference.type === MessageReferenceType.Default
 				? message.reference.messageId
 				: null;
+		const poll = message.poll;
 		await this.#db.query("insert message", async (tx) => {
 			await tx.insert(messages).values({
 				id: message.id,
 				author_id: message.author.id,
 				channel_id: message.channelId,
-				content: message.content,
+				content: poll?.question.text ?? message.content,
 				guild_id: message.guildId,
 				timestamp: Math.floor(message.createdAt.getTime() / 1000),
 				replies_to: repliesTo,
+				is_poll: poll !== null,
 			});
+			if (poll && poll.answers.size > 0) {
+				await tx.insert(pollChoices).values(
+					poll.answers.map((answer) => ({
+						message_id: message.id,
+						choice_id: answer.id,
+						text: answer.text,
+						emoji: answer.emoji?.id ?? answer.emoji?.name ?? null,
+					})),
+				);
+			}
 		});
 		Sentry.logger.info("Message saved in database", {
 			"message.id": message.id,
@@ -71,6 +93,8 @@ export class TrackingService extends Service {
 	@traced("event.handler")
 	async #handleMessageDelete(message: OmitPartialGroupDMChannel<Message> | PartialMessage) {
 		await this.#db.query("delete message", async (tx) => {
+			await tx.delete(pollResponses).where(eq(pollResponses.message_id, message.id));
+			await tx.delete(pollChoices).where(eq(pollChoices.message_id, message.id));
 			await tx.delete(messages).where(eq(messages.id, message.id));
 		});
 		Sentry.logger.info("Message deleted from database", {
@@ -119,6 +143,56 @@ export class TrackingService extends Service {
 				);
 		});
 		Sentry.logger.info("Reaction deleted from database");
+	}
+
+	@traced("event.handler")
+	async #handlePollVoteCreate(answer: PollAnswer | PartialPollAnswer, userId: string) {
+		if (!answer.poll.message.inGuild()) {
+			Sentry.logger.info("Poll vote not in guild; not tracking", {
+				"message.id": answer.poll.messageId,
+				"discord.user.id": userId,
+			});
+			return;
+		}
+		await this.#db.query("insert poll response", async (tx) => {
+			await tx.insert(pollResponses).values({
+				message_id: answer.poll.messageId,
+				choice_id: answer.id,
+				user_id: userId,
+			});
+		});
+		Sentry.logger.info("Poll response saved in database", {
+			"message.id": answer.poll.messageId,
+			"poll.choice.id": answer.id,
+			"discord.user.id": userId,
+		});
+	}
+
+	@traced("event.handler")
+	async #handlePollVoteDelete(answer: PollAnswer | PartialPollAnswer, userId: string) {
+		if (!answer.poll.message.inGuild()) {
+			Sentry.logger.info("Poll vote not in guild; not tracking", {
+				"message.id": answer.poll.messageId,
+				"discord.user.id": userId,
+			});
+			return;
+		}
+		await this.#db.query("delete poll response", async (tx) => {
+			await tx
+				.delete(pollResponses)
+				.where(
+					and(
+						eq(pollResponses.message_id, answer.poll.messageId),
+						eq(pollResponses.choice_id, answer.id),
+						eq(pollResponses.user_id, userId),
+					),
+				);
+		});
+		Sentry.logger.info("Poll response deleted from database", {
+			"message.id": answer.poll.messageId,
+			"poll.choice.id": answer.id,
+			"discord.user.id": userId,
+		});
 	}
 
 	@traced("event.handler")

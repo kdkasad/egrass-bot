@@ -1,8 +1,11 @@
+import { eq, getTableColumns } from "drizzle-orm";
 import {
+	foreignKey,
 	index,
 	integer,
 	primaryKey,
 	sqliteTable,
+	sqliteView,
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
@@ -50,6 +53,7 @@ export const messages = sqliteTable(
 		timestamp: integer("timestamp").notNull(),
 		content: text("content").notNull(),
 		replies_to: text("replies_to"),
+		is_poll: integer("is_poll", { mode: "boolean" }).notNull().default(false),
 	},
 	(t) => [index("idx_messages_author").on(t.author_id)],
 );
@@ -126,3 +130,40 @@ export const exchangeTransactions = sqliteTable("exchange_transactions", {
 	memo: text("memo").notNull(),
 	message_id: text("message_id"),
 });
+
+export const polls = sqliteView("polls").as((qb) => {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { is_poll: _, ...rest } = getTableColumns(messages);
+	return qb.select(rest).from(messages).where(eq(messages.is_poll, true));
+});
+
+export const pollChoices = sqliteTable(
+	"poll_choices",
+	{
+		message_id: text("message_id").references(() => messages.id),
+		choice_id: integer("choice_id").notNull(),
+		text: text("text"),
+		emoji: text("emoji"),
+	},
+	(t) => [
+		primaryKey({ columns: [t.message_id, t.choice_id] }),
+		index("idx_poll_choices").on(t.message_id, t.choice_id),
+	],
+);
+
+export const pollResponses = sqliteTable(
+	"poll_responses",
+	{
+		message_id: text("message_id").notNull(),
+		choice_id: integer("choice_id").notNull(),
+		user_id: text("user_id").references(() => members.id),
+	},
+	(t) => [
+		primaryKey({ columns: [t.message_id, t.choice_id, t.user_id] }),
+		foreignKey({
+			columns: [t.message_id, t.choice_id],
+			foreignColumns: [pollChoices.message_id, pollChoices.choice_id],
+		}),
+		index("idx_poll_responses").on(t.message_id, t.choice_id),
+	],
+);

@@ -165,6 +165,44 @@ const events = {
 				}),
 			),
 	} satisfies EventDescriptor<"messageReactionRemove">,
+	"poll:vote:create": {
+		discordJsName: "messagePollVoteAdd",
+		spanName: "poll vote created",
+		attributes: (answer, userId) => ({
+			"discord.message.id": answer.poll.messageId,
+			"discord.channel.id": answer.poll.channelId,
+			"discord.channel.type": ChannelType[answer.poll.channel.type],
+			"discord.user.id": userId,
+			"discord.guild.id": answer.poll.message.guildId ?? "none",
+		}),
+		logger: (answer, userId) =>
+			Sentry.logger.info(
+				"Poll vote created",
+				flatten({
+					message: { id: answer.poll.messageId },
+					user: { id: userId },
+				}),
+			),
+	} satisfies EventDescriptor<"messagePollVoteAdd">,
+	"poll:vote:delete": {
+		discordJsName: "messagePollVoteRemove",
+		spanName: "poll vote deleted",
+		attributes: (answer, userId) => ({
+			"discord.message.id": answer.poll.messageId,
+			"discord.channel.id": answer.poll.channelId,
+			"discord.channel.type": ChannelType[answer.poll.channel.type],
+			"discord.user.id": userId,
+			"discord.guild.id": answer.poll.message.guildId ?? "none",
+		}),
+		logger: (answer, userId) =>
+			Sentry.logger.info(
+				"Poll vote deleted",
+				flatten({
+					message: { id: answer.poll.messageId },
+					user: { id: userId },
+				}),
+			),
+	} satisfies EventDescriptor<"messagePollVoteRemove">,
 	"member:join": {
 		discordJsName: "guildMemberAdd",
 		spanName: "guild member joined",
@@ -255,6 +293,8 @@ export class DiscordService extends Feature {
 					GatewayIntentBits.GuildMembers,
 					GatewayIntentBits.MessageContent,
 					GatewayIntentBits.DirectMessages,
+					GatewayIntentBits.GuildMessagePolls,
+					GatewayIntentBits.DirectMessagePolls,
 				],
 				partials: [Partials.Reaction, Partials.Message, Partials.Channel],
 			});
