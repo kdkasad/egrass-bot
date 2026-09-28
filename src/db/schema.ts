@@ -157,6 +157,7 @@ export const pollResponses = sqliteTable(
 		message_id: text("message_id").notNull(),
 		choice_id: integer("choice_id").notNull(),
 		user_id: text("user_id").references(() => members.id),
+		timestamp: integer("timestamp"),
 	},
 	(t) => [
 		primaryKey({ columns: [t.message_id, t.choice_id, t.user_id] }),

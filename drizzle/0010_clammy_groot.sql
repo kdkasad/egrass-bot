@@ -1,0 +1,1 @@
+ALTER TABLE `poll_responses` ADD `timestamp` integer;

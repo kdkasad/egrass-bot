@@ -26,6 +26,7 @@ import {
 	reactions,
 } from "../db/schema";
 import { Guilds } from "../consts";
+import { dateToSqlite } from "../utils/time";
 
 export class TrackingService extends Service {
 	#db: DatabaseService;
@@ -159,6 +160,7 @@ export class TrackingService extends Service {
 				message_id: answer.poll.messageId,
 				choice_id: answer.id,
 				user_id: userId,
+				timestamp: dateToSqlite(new Date()),
 			});
 		});
 		Sentry.logger.info("Poll response saved in database", {
