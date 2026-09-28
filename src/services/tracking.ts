@@ -66,8 +66,8 @@ export class TrackingService extends Service {
 		const poll = message.poll;
 		await this.#db.query("insert message", async (tx) => {
 			await tx.insert(messages).values({
-				id: message.id,
-				author_id: message.author.id,
+				message_id: message.id,
+				user_id: message.author.id,
 				channel_id: message.channelId,
 				content: poll?.question.text ?? message.content,
 				guild_id: message.guildId,
@@ -96,7 +96,7 @@ export class TrackingService extends Service {
 		await this.#db.query("delete message", async (tx) => {
 			await tx.delete(pollResponses).where(eq(pollResponses.message_id, message.id));
 			await tx.delete(pollChoices).where(eq(pollChoices.message_id, message.id));
-			await tx.delete(messages).where(eq(messages.id, message.id));
+			await tx.delete(messages).where(eq(messages.message_id, message.id));
 		});
 		Sentry.logger.info("Message deleted from database", {
 			"message.id": message.id,
@@ -200,14 +200,14 @@ export class TrackingService extends Service {
 	@traced("event.handler")
 	async #handleMemberJoinOrUpdate(member: GuildMember) {
 		const record = {
-			id: member.id,
+			user_id: member.id,
 			display_name: member.displayName,
 			username: member.user.username,
 			is_bot: member.user.bot,
 		};
 		this.#db.query("upsert member", (tx) =>
 			tx.insert(membersTable).values(record).onConflictDoUpdate({
-				target: membersTable.id,
+				target: membersTable.user_id,
 				set: record,
 			}),
 		);
@@ -223,13 +223,13 @@ export class TrackingService extends Service {
 		await this.#db.query("upsert all members", async (tx) => {
 			for (const member of members.values()) {
 				const record = {
-					id: member.id,
+					user_id: member.id,
 					display_name: member.displayName,
 					username: member.user.username,
 					is_bot: member.user.bot,
 				};
 				await tx.insert(membersTable).values(record).onConflictDoUpdate({
-					target: membersTable.id,
+					target: membersTable.user_id,
 					set: record,
 				});
 			}

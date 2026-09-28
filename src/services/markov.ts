@@ -307,7 +307,7 @@ No messages in the database were found ${targetMention} which start with the pro
 				guildId: messages.guild_id,
 			})
 			.from(markov4)
-			.innerJoin(messages, eq(markov4.message_id, messages.id))
+			.innerJoin(messages, eq(markov4.message_id, messages.message_id))
 			.where(filter)
 			.limit(1)
 			.offset(offset);

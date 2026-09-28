@@ -156,7 +156,7 @@ export class ExchangeService extends Feature {
 					.select({
 						id: sqlNull.as("id"),
 						sender_id: sqlNull.as("sender_id"),
-						recipient_id: messages.author_id,
+						recipient_id: messages.user_id,
 						amount: count().as("amount"),
 						timestamp: sql<number>`unixepoch()`.as("timestamp"),
 						memo: sql<string>`${"Retroactive historical message income"}`.as("memo"),
@@ -164,9 +164,9 @@ export class ExchangeService extends Feature {
 					})
 					.from(messages)
 					// inner join is to only select messages from existing members
-					.innerJoin(membersTable, eq(messages.author_id, membersTable.id))
+					.innerJoin(membersTable, eq(messages.user_id, membersTable.user_id))
 					.where(eq(membersTable.is_bot, false))
-					.groupBy(messages.author_id),
+					.groupBy(messages.user_id),
 			);
 
 			// 2. Insert transactions as balances

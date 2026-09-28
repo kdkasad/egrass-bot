@@ -136,7 +136,7 @@ export class MinecraftService extends Feature {
 		const qryResult = await this.#db.query("select Minecraft username", (tx) =>
 			tx.query.minecraft.findFirst({
 				columns: { mc_username: true },
-				where: eq(minecraft.discord_id, interaction.user.id),
+				where: eq(minecraft.user_id, interaction.user.id),
 			}),
 		);
 		const oldUsername = qryResult?.mc_username;
@@ -172,11 +172,11 @@ export class MinecraftService extends Feature {
 				tx
 					.insert(minecraft)
 					.values({
-						discord_id: interaction.user.id,
+						user_id: interaction.user.id,
 						mc_username: username,
 					})
 					.onConflictDoUpdate({
-						target: minecraft.discord_id,
+						target: minecraft.user_id,
 						set: {
 							mc_username: username,
 						},
@@ -195,7 +195,7 @@ export class MinecraftService extends Feature {
 		} catch (err) {
 			// On failure, remove the user from the database
 			await this.#db.query("remove Minecraft username", (tx) =>
-				tx.delete(minecraft).where(eq(minecraft.discord_id, interaction.user.id)),
+				tx.delete(minecraft).where(eq(minecraft.user_id, interaction.user.id)),
 			);
 			throw err;
 		}

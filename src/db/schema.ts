@@ -46,16 +46,16 @@ export const neetcodeSolves = sqliteTable(
 export const messages = sqliteTable(
 	"messages",
 	{
-		id: text("id").primaryKey(),
+		message_id: text("message_id").primaryKey(),
 		guild_id: text("guild_id").notNull(),
 		channel_id: text("channel_id").notNull(),
-		author_id: text("author_id").notNull(),
+		user_id: text("user_id").notNull(),
 		timestamp: integer("timestamp").notNull(),
 		content: text("content").notNull(),
 		replies_to: text("replies_to"),
 		is_poll: integer("is_poll", { mode: "boolean" }).notNull().default(false),
 	},
-	(t) => [index("idx_messages_author").on(t.author_id)],
+	(t) => [index("idx_messages_author").on(t.user_id)],
 );
 
 export const markov4 = sqliteTable(
@@ -63,7 +63,7 @@ export const markov4 = sqliteTable(
 	{
 		message_id: text("message_id")
 			.notNull()
-			.references(() => messages.id, { onDelete: "cascade" }),
+			.references(() => messages.message_id, { onDelete: "cascade" }),
 		word1: text("word1"),
 		word2: text("word2"),
 		word3: text("word3"),
@@ -78,7 +78,7 @@ export const markov4 = sqliteTable(
 );
 
 export const members = sqliteTable("members", {
-	id: text("id").primaryKey(),
+	user_id: text("user_id").primaryKey(),
 	display_name: text("display_name").notNull(),
 	username: text("username").notNull(),
 	is_bot: integer("is_bot", { mode: "boolean" }).notNull().default(false),
@@ -90,9 +90,9 @@ export const sql_responses = sqliteTable("sql_responses", {
 });
 
 export const minecraft = sqliteTable("minecraft", {
-	discord_id: text("discord_id")
+	user_id: text("user_id")
 		.primaryKey()
-		.references(() => members.id),
+		.references(() => members.user_id),
 	mc_username: text("mc_username").notNull().unique(),
 });
 
@@ -115,16 +115,16 @@ export const mutes = sqliteTable("mutes", {
 export const exchangeBalances = sqliteTable("exchange_balances", {
 	user_id: text("user_id")
 		.primaryKey()
-		.references(() => members.id),
+		.references(() => members.user_id),
 	balance: integer("balance").notNull().default(0),
 });
 
 export const exchangeTransactions = sqliteTable("exchange_transactions", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
-	sender_id: text("sender_id").references(() => members.id),
+	sender_id: text("sender_id").references(() => members.user_id),
 	recipient_id: text("recipient_id")
 		.notNull()
-		.references(() => members.id),
+		.references(() => members.user_id),
 	amount: integer("amount").notNull(),
 	timestamp: integer("timestamp").notNull(),
 	memo: text("memo").notNull(),
@@ -140,7 +140,7 @@ export const polls = sqliteView("polls").as((qb) => {
 export const pollChoices = sqliteTable(
 	"poll_choices",
 	{
-		message_id: text("message_id").references(() => messages.id),
+		message_id: text("message_id").references(() => messages.message_id),
 		choice_id: integer("choice_id").notNull(),
 		text: text("text"),
 		emoji: text("emoji"),
@@ -156,7 +156,7 @@ export const pollResponses = sqliteTable(
 	{
 		message_id: text("message_id").notNull(),
 		choice_id: integer("choice_id").notNull(),
-		user_id: text("user_id").references(() => members.id),
+		user_id: text("user_id").references(() => members.user_id),
 		timestamp: integer("timestamp"),
 	},
 	(t) => [
@@ -170,12 +170,5 @@ export const pollResponses = sqliteTable(
 );
 
 export const messagesWithAuthor = sqliteView("messages_with_author").as((qb) => {
-	return qb
-		.select({
-			display_name: members.display_name,
-			username: members.username,
-			...getTableColumns(messages),
-		})
-		.from(messages)
-		.leftJoin(members, eq(messages.author_id, members.id));
+	return qb.select().from(messages).leftJoin(members, eq(messages.user_id, members.user_id));
 });

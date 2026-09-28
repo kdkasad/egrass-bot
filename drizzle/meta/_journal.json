@@ -78,6 +78,27 @@
       "when": 1790611673877,
       "tag": "0010_clammy_groot",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790611979203,
+      "tag": "0011_fresh_meltdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790612096770,
+      "tag": "0012_charming_roland_deschain",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790612533762,
+      "tag": "0013_slimy_nomad",
+      "breakpoints": true
     }
   ]
 }
