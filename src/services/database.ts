@@ -67,6 +67,24 @@ export class DatabaseService extends Service {
 		});
 	}
 
+	/**
+	 * Runs `fn` in a transaction that is rolled back if `fn` throws.
+	 *
+	 * Unlike {@link query}, `fn` must be synchronous: use `.run()`, `.all()`, and
+	 * `.get()` instead of `await`. bun:sqlite commits as soon as the callback
+	 * returns, so with an async callback everything after the first `await`
+	 * runs outside the transaction and is not rolled back on error.
+	 */
+	querySync<T>(name: string, fn: (tx: Transaction) => T): T {
+		return Sentry.startSpan({ name, op: "db.query" }, () => {
+			const result = this.db.transaction(fn);
+			if (result instanceof Promise) {
+				throw new Error(`querySync("${name}") was given an async callback`);
+			}
+			return result;
+		});
+	}
+
 	@traced()
 	async stop(): Promise<void> {
 		this.rwConn.run("PRAGMA optimize");
