@@ -19,6 +19,12 @@ A Discord bot for a server with friends.
     - Allows any member to execute read-only SQL queries against the database
     - Responds with data formatted as a text-based table, using attachments if the result is too large to fit in one message
 - Yearly wrapped/recap stats
+- Bounties on the Egrass Exchange
+    - `/bounty create` posts a task with a reward, which is held from the poster's balance
+    - `/bounty claim` pays the reward, or asks the poster to approve the claim (with optional text and image proof)
+    - `/bounty list` shows open bounties, with pagination and an optional filter by poster
+    - Unclaimed bounties expire at their deadline and the reward is refunded
+    - Posters can cancel their own bounties; admins can cancel any bounty
 - Handles self-registration of users for an associated Minecraft server
     - Users can run `/minecraft whitelist <mc-username>` to add themselves to the whitelist
     - The bot connects to the server using RCON and runs commands to edit the whitelist as needed

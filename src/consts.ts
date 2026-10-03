@@ -15,6 +15,8 @@ export enum Channels {
 	Neetcode = "1417344977641672764",
 	Announcements = "1170548119881138207",
 	Starboard = "1374949544923500594",
+	/** Bots channel, where bounty notices are posted */
+	Wordle = "1385089576447643658",
 }
 
 export enum ChannelCategories {

@@ -172,3 +172,57 @@ export const pollResponses = sqliteTable(
 export const messagesWithAuthor = sqliteView("messages_with_author").as((qb) => {
 	return qb.select().from(messages).leftJoin(members, eq(messages.user_id, members.user_id));
 });
+
+/**
+ * Bounties posted through the exchange. While a bounty is open, its amount is
+ * held in escrow: it has already been deducted from the poster's balance but no
+ * transaction is recorded until it is paid out to a claimer. Expired and
+ * cancelled bounties are refunded to the poster's balance.
+ */
+export const bounties = sqliteTable(
+	"bounties",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		poster_id: text("poster_id")
+			.notNull()
+			.references(() => members.user_id),
+		task: text("task").notNull(),
+		amount: integer("amount").notNull(),
+		requires_verification: integer("requires_verification", { mode: "boolean" })
+			.notNull()
+			.default(false),
+		status: text("status", { enum: ["open", "completed", "expired", "cancelled"] })
+			.notNull()
+			.default("open"),
+		created_at: integer("created_at").notNull(),
+		/** Deadline, or null if the bounty has no time limit */
+		expires_at: integer("expires_at"),
+		closed_at: integer("closed_at"),
+		winner_id: text("winner_id").references(() => members.user_id),
+		transaction_id: integer("transaction_id").references(() => exchangeTransactions.id),
+	},
+	(t) => [
+		index("idx_bounties_status_expires_at").on(t.status, t.expires_at),
+		index("idx_bounties_poster_id").on(t.poster_id),
+	],
+);
+
+export const bountyClaims = sqliteTable(
+	"bounty_claims",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		bounty_id: integer("bounty_id")
+			.notNull()
+			.references(() => bounties.id),
+		claimer_id: text("claimer_id")
+			.notNull()
+			.references(() => members.user_id),
+		proof: text("proof"),
+		status: text("status", { enum: ["pending", "approved", "rejected", "voided"] })
+			.notNull()
+			.default("pending"),
+		created_at: integer("created_at").notNull(),
+		resolved_at: integer("resolved_at"),
+	},
+	(t) => [index("idx_bounty_claims_bounty_id_status").on(t.bounty_id, t.status)],
+);
