@@ -33,6 +33,7 @@
 		"drizzle-orm": "^0.45.2",
 		"log4js": "^6.9.1",
 		"node-cron": "^4.2.1",
+		"prqlc": "^0.13.14",
 		"rcon-client": "^4.2.5",
 		"string-width": "^8.2.0",
 		"temporal-polyfill": "^1.0.1",

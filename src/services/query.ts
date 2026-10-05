@@ -8,6 +8,7 @@ import {
 	type PartialMessage,
 } from "discord.js";
 import { eq } from "drizzle-orm";
+import * as prqlc from "prqlc";
 
 import { Feature } from "../utils/service";
 import type { DatabaseService } from "./database";
@@ -20,6 +21,42 @@ import { sql_responses } from "../db/schema";
 
 const QUERY_TIMEOUT_MS = 5000;
 const MAX_ATTACHMENT_SIZE = MAX_MESSAGE_CREATE_REQUEST_SIZE - 1024;
+
+class QueryInput {
+	constructor(
+		readonly source: string,
+		readonly language: "sql" | "prql",
+		readonly format: QueryResultFormat,
+	) {}
+
+	equals(other: QueryInput): boolean {
+		return (
+			this.source === other.source &&
+			this.language === other.language &&
+			this.format === other.format
+		);
+	}
+
+	get_sql(): string {
+		if (this.language == "sql") return this.source;
+		const options = new prqlc.CompileOptions();
+		options.target = "sql.sqlite";
+		options.format = false;
+		options.signature_comment = false;
+		let sql: string | undefined;
+		try {
+			sql = prqlc.compile(this.source, options);
+		} catch (error) {
+			// PRQL encodes diagnostics as JSON in error.message
+			const diagnostics = JSON.parse((error as Error).message) as {
+				inner: { reason: string }[];
+			};
+			throw new Error(diagnostics.inner[0].reason, { cause: error });
+		}
+		if (!sql) throw new Error("PRQL compiler did not return SQL");
+		return sql;
+	}
+}
 
 export class TimeoutError extends Error {
 	constructor(ms: number) {
@@ -75,7 +112,7 @@ export class QueryService extends Feature {
 		// If new message no longer meets the criteria, skip it
 		if (!this.#isSqlCandidate(newMessage)) return;
 
-		// If the old message was not a SQL query that we responded to, treat it as a new message
+		// If the old message was not a query that we responded to, treat it as a new message
 		const result = await this.#db.query("select query response", (tx) =>
 			tx
 				.select({ responseId: sql_responses.response_id })
@@ -93,14 +130,14 @@ export class QueryService extends Feature {
 		}
 
 		// Get queries from old and new messages
-		const oldQuery = this.#getQueryFromMessage(oldMessage)!;
+		const oldQuery = this.#getQueryFromMessage(oldMessage);
 		const newQuery = this.#getQueryFromMessage(newMessage);
 
 		// If the new message doesn't contain a query, there's nothing to do
 		if (!newQuery) return;
 
 		// If the query hasn't changed, we don't need to do anything
-		if (oldQuery.sql === newQuery.sql && oldQuery.format === newQuery.format) {
+		if (oldQuery && oldQuery.equals(newQuery)) {
 			return;
 		}
 
@@ -149,11 +186,10 @@ export class QueryService extends Feature {
 	}
 
 	async #runQueryAndPrepareResponse(
-		query: QueryWorkerRequest,
+		query: QueryInput,
 		message: Message,
 	): Promise<MessageReplyOptions & MessageEditOptions> {
 		Sentry.getCurrentScope().setAttributes({
-			"query.sql": query.sql,
 			"query.format": query.format,
 			"user.id": message.author.id,
 			"user.name": message.author.displayName,
@@ -161,7 +197,12 @@ export class QueryService extends Feature {
 		});
 		Sentry.logger.info("SQL query requested");
 		try {
-			const result = await this.#executeReadonlyQuery(query, QUERY_TIMEOUT_MS);
+			const sql = query.get_sql();
+			Sentry.getCurrentScope().setAttribute("query.sql", sql);
+			const result = await this.#executeReadonlyQuery(
+				{ sql, format: query.format, dbFile: this.#db.dbFilename },
+				QUERY_TIMEOUT_MS,
+			);
 			let replyPayload: MessageReplyOptions & MessageEditOptions;
 			if (result === null) {
 				replyPayload = { content: `Query returned 0 rows` };
@@ -274,15 +315,17 @@ export class QueryService extends Feature {
 		return true;
 	}
 
-	#getQueryFromMessage(message: Message): QueryWorkerRequest | null {
-		const match = message.content.match(/```sql\n(?<query>.*?)\n```/is);
+	#getQueryFromMessage(message: Message): QueryInput | null {
+		const match = message.content.match(/```(?<language>sql|prql)\n(?<query>.*?)\n```/is);
 		if (!match || !match.groups) {
-			// Message doesn't contain a SQL code block
+			// Message doesn't contain a supported query code block
 			return null;
 		}
+		const language = match.groups.language.toLowerCase();
+		if (language !== "sql" && language !== "prql") return null;
 		const format = message.content.trimEnd().toLowerCase().endsWith("json")
 			? QueryResultFormat.JSON
 			: QueryResultFormat.Table;
-		return { sql: match.groups.query, format, dbFile: this.#db.dbFilename };
+		return new QueryInput(match.groups.query, language, format);
 	}
 }
