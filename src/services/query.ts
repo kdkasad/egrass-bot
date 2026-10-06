@@ -51,9 +51,9 @@ class QueryInput {
 			const diagnostics = JSON.parse((error as Error).message) as {
 				inner: { reason: string }[];
 			};
-			throw new Error(diagnostics.inner[0].reason, { cause: error });
+			throw new PrqlError(diagnostics.inner[0].reason, { cause: error });
 		}
-		if (!sql) throw new Error("PRQL compiler did not return SQL");
+		if (!sql) throw new PrqlError("PRQL compiler did not return SQL");
 		return sql;
 	}
 }
@@ -63,6 +63,8 @@ export class TimeoutError extends Error {
 		super(`Timed out (exceeded ${ms} ms)`);
 	}
 }
+
+class PrqlError extends Error {}
 
 export class QueryService extends Feature {
 	#db: DatabaseService;
@@ -235,7 +237,11 @@ export class QueryService extends Feature {
 			};
 		} catch (error) {
 			if (error instanceof Error) {
-				if (error.name !== TimeoutError.name && error.name !== Bun.SQL.SQLiteError.name) {
+				if (
+					error.name !== TimeoutError.name &&
+					error.name !== Bun.SQL.SQLiteError.name &&
+					error.name !== PrqlError.name
+				) {
 					Sentry.captureException(error);
 					Sentry.logger.error(
 						Sentry.logger.fmt`Error handling SQL request: ${error.message}`,
