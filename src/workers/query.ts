@@ -12,6 +12,7 @@ self.addEventListener(
 	(event) => {
 		const { sql, format, dbFile } = event.data as QueryWorkerRequest;
 		const rodb = new Database(dbFile, { readonly: true, readwrite: false });
+		rodb.run("PRAGMA query_only = 1;");
 		try {
 			const query = rodb.prepare<Record<string, unknown>, []>(sql);
 			const results = query.all();

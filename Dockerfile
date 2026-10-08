@@ -22,4 +22,4 @@ WORKDIR /var/lib/bot
 
 EXPOSE 80/tcp
 
-ENTRYPOINT ["bun", "run", "-b", "/app/src/main.ts"]
+ENTRYPOINT ["bun", "run", "--no-env-file", "-b", "/app/src/main.ts"]
