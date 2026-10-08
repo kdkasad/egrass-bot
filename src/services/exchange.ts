@@ -22,16 +22,7 @@ import {
 	members as membersTable,
 	messages,
 } from "../db/schema";
-
-function formatMoney(amount: number): string {
-	const format = Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		currencyDisplay: "narrowSymbol",
-		trailingZeroDisplay: "stripIfInteger",
-	});
-	return format.format(amount);
-}
+import { formatMoney } from "../utils/money";
 
 export class InsufficientBalanceError extends Error {
 	need: number;
@@ -364,7 +355,7 @@ export class ExchangeService extends Feature {
 		const balance = balanceRow[0]?.balance ?? 0;
 		const isSelf = targetUser.id === interaction.user.id;
 		const responseText = isSelf
-			? `💰 You have **$${formatMoney(balance)}**.`
+			? `💰 You have **${formatMoney(balance)}**.`
 			: `💰 ${userMention(targetUser.id)} has **${formatMoney(balance)}**.`;
 
 		await wrapInteractionDo(
