@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/bun";
 import {
+	DiscordAPIError,
 	InteractionContextType,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -60,17 +61,43 @@ export class IQService extends Feature {
 		// Acknowledge before making moderation requests, which may take a while.
 		const defer = interaction.deferReply();
 		let ending = "Please upgrade your brain.";
+		const member = await interaction.guild.members.fetch(interaction.user.id);
 		try {
-			const member = await interaction.guild.members.fetch(interaction.user.id);
 			await member.timeout(60_000, "They're so smart... right?");
 			ending = "Please shut the fuck up.";
 		} catch (err) {
-			Sentry.logger.error("Failed to apply IQ timeout", {
-				"user.id": interaction.user.id,
-				"guild.id": interaction.guildId,
-				error: err instanceof Error ? err.message : String(err),
-			});
-			Sentry.captureException(err);
+			let expectError = false;
+			if (err instanceof DiscordAPIError && err.code == 50013) {
+				// Permission error. If the member we tried to time out has a
+				// higher role than our bot's highest role, this is expected,
+				// and we should ignore the error.
+				const botMember = await interaction.guild.members.fetchMe();
+				if (
+					interaction.guild.roles.comparePositions(
+						member.roles.highest,
+						botMember.roles.highest,
+					) > 0
+				) {
+					expectError = true;
+					Sentry.logger.warn(
+						"Failed to apply IQ timeout; target member has higher role than bot",
+						{
+							"user.id": interaction.user.id,
+							"guild.id": interaction.guildId,
+							userRole: member.roles.highest.id,
+							botRole: botMember.roles.highest.id,
+						},
+					);
+				}
+			}
+			if (!expectError) {
+				Sentry.logger.error("Failed to apply IQ timeout", {
+					"user.id": interaction.user.id,
+					"guild.id": interaction.guildId,
+					error: err instanceof Error ? err.message : String(err),
+				});
+				Sentry.captureException(err);
+			}
 		}
 		await defer;
 		await wrapInteractionDo(
