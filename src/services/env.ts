@@ -7,6 +7,8 @@ const schema = z.object({
 	DISCORD_BOT_TOKEN: z.string(),
 	SENTRY_DSN: z.url(),
 	DATABASE_FILE: z.string(),
+	/** Kept separate from DATABASE_FILE so it can't be read by SQL queries sent to the bot */
+	ANONPOLL_DATABASE_FILE: z.string().default("anonpoll.sqlite3"),
 
 	DISABLED_FEATURES: z
 		.string()

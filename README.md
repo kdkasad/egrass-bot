@@ -25,6 +25,10 @@ A Discord bot for a server with friends.
     - `/bounty list` shows open bounties, with pagination and an optional filter by poster
     - Unclaimed bounties expire at their deadline and the reward is refunded
     - Posters can cancel their own bounties; admins can cancel any bounty
+- Anonymous polls
+    - `/anonpoll` posts a poll with a time limit; the bot records who voted, but never what they voted for
+    - When the poll closes, the bot announces that results are available; they are only shown (privately) to people who voted
+    - Votes are stored as per-choice counters in a separate database that isn't reachable through SQL queries
 - Handles self-registration of users for an associated Minecraft server
     - Users can run `/minecraft whitelist <mc-username>` to add themselves to the whitelist
     - The bot connects to the server using RCON and runs commands to edit the whitelist as needed

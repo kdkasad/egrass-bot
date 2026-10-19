@@ -17,6 +17,7 @@ import {
 	PsetService,
 	BountyService,
 	IQService,
+	AnonPollService,
 } from "./services";
 
 async function main() {
@@ -63,6 +64,7 @@ async function main() {
 	const pset = new PsetService(env, discord, database);
 	const bounty = new BountyService(env, discord, database, cron);
 	const iq = new IQService(env, discord);
+	const anonPoll = new AnonPollService(env, discord, cron);
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 	(void signalHandler,
 		explode,
@@ -75,7 +77,8 @@ async function main() {
 		exchange,
 		pset,
 		bounty,
-		iq);
+		iq,
+		anonPoll);
 }
 
 main();
