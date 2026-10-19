@@ -16,6 +16,7 @@ import {
 	ExchangeService,
 	PsetService,
 	BountyService,
+	IQService,
 } from "./services";
 
 async function main() {
@@ -61,6 +62,7 @@ async function main() {
 	const signalHandler = new SignalHandlerService(discord, database, http);
 	const pset = new PsetService(env, discord, database);
 	const bounty = new BountyService(env, discord, database, cron);
+	const iq = new IQService(env, discord);
 	// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 	(void signalHandler,
 		explode,
@@ -72,7 +74,8 @@ async function main() {
 		minecraft,
 		exchange,
 		pset,
-		bounty);
+		bounty,
+		iq);
 }
 
 main();
