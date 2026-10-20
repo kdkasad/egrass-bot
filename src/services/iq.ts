@@ -12,7 +12,11 @@ import type { DiscordService } from "./discord";
 import type { EnvService } from "./env";
 
 export class IQService extends Feature {
-	static #commandSpec = new SlashCommandBuilder()
+	static readonly #mean = 60;
+	static readonly #standardDeviation = 15;
+	static readonly #timeoutThreshold = 63;
+
+	static readonly #commandSpec = new SlashCommandBuilder()
 		.setName("iq")
 		.setDescription("Lot of IQs")
 		.setContexts(InteractionContextType.Guild);
@@ -49,8 +53,15 @@ export class IQService extends Feature {
 			return;
 		}
 
-		const smartness = Math.floor(Math.random() * 121);
-		if (smartness > 70) {
+		// Box-Muller transform for standard normal
+		const R = Math.sqrt(-2 * Math.log(1 - Math.random()));
+		const theta = 2 * Math.PI * Math.random();
+		const standardNormal = R * Math.cos(theta);
+		const smartness = Math.max(
+			0,
+			Math.round(IQService.#mean + IQService.#standardDeviation * standardNormal),
+		);
+		if (smartness > IQService.#timeoutThreshold) {
 			await wrapInteractionDo(
 				interaction,
 				"reply",
