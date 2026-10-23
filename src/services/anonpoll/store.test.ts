@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
-import { existsSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { QueryResultFormat, type QueryWorkerResult } from "../../types/query";
+import { anonPolls, anonPollVoters } from "../../db/schema";
+import type { CronService } from "../cron";
+import { DatabaseService } from "../database";
+import type { EnvService } from "../env";
 import { AnonPollStore, type PollInfo } from "./store";
+import { PollCipher } from "./cipher";
 import { renderClosedAnnouncement, renderPollMessage, renderResults } from "./messages";
 
 const POLL = "poll1";
@@ -11,10 +16,29 @@ const BOB = "bob";
 const CREATED = 1_000;
 const CLOSES = 2_000;
 
+async function newStore(file = ":memory:", secret = "secret") {
+	const env = { vars: { DATABASE_FILE: file } } as unknown as EnvService;
+	const cron = { createJob() {} } as unknown as CronService;
+	const db = await DatabaseService.new(env, cron);
+	return { db, store: new AnonPollStore(db, new PollCipher(secret)) };
+}
+
+/** Runs `sql` the way the bot runs queries sent by users */
+function runUserQuery(dbFile: string, sql: string): Promise<QueryWorkerResult> {
+	return new Promise((resolve) => {
+		const worker = new Worker(new URL("../../workers/query.ts", import.meta.url));
+		worker.onmessage = (e) => {
+			resolve(e.data);
+			worker.terminate();
+		};
+		worker.postMessage({ sql, format: QueryResultFormat.JSON, dbFile });
+	});
+}
+
 describe("AnonPollStore", () => {
 	let store: AnonPollStore;
-	beforeEach(() => {
-		store = new AnonPollStore(":memory:");
+	beforeEach(async () => {
+		({ store } = await newStore());
 		store.createPoll({
 			id: POLL,
 			question: "Pizza or tacos?",
@@ -98,38 +122,159 @@ describe("AnonPollStore", () => {
 	});
 });
 
-describe("AnonPollStore migrations", () => {
-	test("upgrades a database created before deadlines, closing its old polls", () => {
-		const path = `${tmpdir()}/anonpoll-migration-${crypto.randomUUID()}.sqlite3`;
-		try {
-			const old = new Database(path, { strict: true, create: true });
-			old.run(`
-				CREATE TABLE anon_polls (id TEXT PRIMARY KEY NOT NULL, question TEXT NOT NULL, choices TEXT NOT NULL);
-				CREATE TABLE anon_poll_voters (poll_id TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (poll_id, user_id)) WITHOUT ROWID;
-				CREATE TABLE anon_poll_tallies (poll_id TEXT NOT NULL, choice_idx INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (poll_id, choice_idx)) WITHOUT ROWID;
-				INSERT INTO anon_polls VALUES ('old', 'Old?', '["A","B"]');
-				INSERT INTO anon_poll_voters VALUES ('old', 'alice');
-				INSERT INTO anon_poll_tallies VALUES ('old', 0, 1), ('old', 1, 0);
-			`);
-			old.close();
+describe("anonymity", () => {
+	test("the database holds nothing readable but the poll ID", async () => {
+		const { store, db } = await newStore();
+		store.createPoll({
+			id: POLL,
+			question: "Pizza or tacos?",
+			choices: ["Pizza", "Tacos"],
+			channelId: "chan123",
+			closesAt: CLOSES,
+		});
+		const tally = () =>
+			db.querySync("read", (tx) => tx.select().from(anonPolls).get()!.tally) as Buffer;
+		const before = tally();
+		store.castVote(POLL, ALICE, 0, CREATED);
+		const after = tally();
+		// Same length and fully re-encrypted, so a diff doesn't reveal the choice
+		expect(after.length).toBe(before.length);
+		expect(after.equals(before)).toBe(false);
 
-			const store = new AnonPollStore(path);
-			expect(store.getPoll("old")!.closed).toBe(true);
-			expect(store.closeDuePolls(CLOSES)).toEqual([]);
-			expect(store.hasVoted("old", ALICE)).toBe(true);
+		const dump = JSON.stringify(
+			db.querySync("dump", (tx) => [
+				tx.select().from(anonPolls).all(),
+				tx.select().from(anonPollVoters).all(),
+			]),
+		);
+		for (const secret of ["Pizza", "chan123", String(CLOSES), ALICE]) {
+			expect(dump).not.toContain(secret);
+		}
+	});
+
+	test("data can't be read with another key or moved to another poll or field", () => {
+		const blob = new PollCipher("secret").encryptTally(POLL, [1, 2]);
+		expect(new PollCipher("secret").decryptTally(POLL, blob)).toEqual([1, 2]);
+		expect(() => new PollCipher("other").decryptTally(POLL, blob)).toThrow();
+		expect(() => new PollCipher("secret").decryptTally("poll2", blob)).toThrow();
+		expect(() => new PollCipher("secret").decrypt(POLL, "info", blob)).toThrow();
+	});
+
+	test("user SQL queries see nothing readable", async () => {
+		const dir = mkdtempSync(`${tmpdir()}/anonpoll-`);
+		try {
+			const file = `${dir}/db.sqlite3`;
+			const { db, store } = await newStore(file);
 			store.createPoll({
 				id: POLL,
-				question: "New?",
-				choices: ["A", "B"],
-				channelId: "chan",
+				question: "Pizza or tacos?",
+				choices: ["Pizza", "Tacos"],
+				channelId: "chan123",
 				closesAt: CLOSES,
 			});
-			expect(store.castVote(POLL, ALICE, 0, CREATED)).toBe("ok");
-			// A WAL would keep a per-vote history linking voters to choices
-			expect(existsSync(`${path}-wal`)).toBe(false);
+			store.setMessageId(POLL, "msg456");
+			store.castVote(POLL, "526907259872083988", 1, CREATED);
+			await db.stop();
+
+			for (const sql of [
+				"SELECT *, CAST(info AS TEXT), CAST(tally AS TEXT) FROM anon_polls",
+				"SELECT * FROM anon_poll_voters",
+			]) {
+				const result = await runUserQuery(file, sql);
+				expect(result.status).toBe("success");
+				const output = (result as { formattedResult: string }).formattedResult;
+				expect(output).toContain(POLL);
+				for (const secret of [
+					"Pizza",
+					"Tacos",
+					"chan123",
+					"msg456",
+					String(CLOSES),
+					"526907259872083988",
+				]) {
+					expect(output).not.toContain(secret);
+				}
+			}
 		} finally {
-			for (const suffix of ["", "-wal", "-shm"]) rmSync(path + suffix, { force: true });
+			rmSync(dir, { recursive: true, force: true });
 		}
+	});
+
+	test("the tally's size never changes, even when a count gains a digit", async () => {
+		const { store, db } = await newStore();
+		store.createPoll({
+			id: POLL,
+			question: "Q?",
+			choices: ["A", "B"],
+			channelId: "c",
+			closesAt: CLOSES,
+		});
+		const tallySize = () =>
+			db.querySync("read", (tx) => tx.select().from(anonPolls).get()!.tally).length;
+		const size = tallySize();
+		for (let i = 0; i < 12; i++) {
+			expect(store.castVote(POLL, `user${i}`, 0, CREATED)).toBe("ok");
+			expect(tallySize()).toBe(size);
+		}
+		expect(store.getResults(POLL)!.choices.map((c) => c.count)).toEqual([12, 0]);
+	});
+
+	test("polls survive a restart with the same key, and are unreadable with another", async () => {
+		const dir = mkdtempSync(`${tmpdir()}/anonpoll-`);
+		try {
+			const file = `${dir}/db.sqlite3`;
+			const first = await newStore(file);
+			first.store.createPoll({
+				id: POLL,
+				question: "Q?",
+				choices: ["A", "B"],
+				channelId: "c",
+				closesAt: CLOSES,
+			});
+			first.store.castVote(POLL, ALICE, 1, CREATED);
+			await first.db.stop();
+
+			const same = await newStore(file);
+			expect(same.store.getPoll(POLL)!.question).toBe("Q?");
+			expect(same.store.hasVoted(POLL, ALICE)).toBe(true);
+			expect(same.store.castVote(POLL, ALICE, 0, CREATED)).toBe("already_voted");
+			expect(same.store.getResults(POLL)!.choices.map((c) => c.count)).toEqual([0, 1]);
+			await same.db.stop();
+
+			const other = await newStore(file, "wrong secret");
+			expect(() => other.store.getPoll(POLL)).toThrow();
+			expect(() => other.store.getResults(POLL)).toThrow();
+			expect(other.store.hasVoted(POLL, ALICE)).toBe(false);
+			await other.db.stop();
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("open deadlines are read from encrypted data", async () => {
+		const { store } = await newStore();
+		store.createPoll({
+			id: "a",
+			question: "Q?",
+			choices: ["A", "B"],
+			channelId: "c",
+			closesAt: CLOSES,
+		});
+		store.createPoll({
+			id: "b",
+			question: "Q?",
+			choices: ["A", "B"],
+			channelId: "c",
+			closesAt: CLOSES + 100,
+		});
+		expect(store.openPollDeadlines().sort()).toEqual([CLOSES, CLOSES + 100]);
+		store.closeDuePolls(CLOSES);
+		expect(store.openPollDeadlines()).toEqual([CLOSES + 100]);
+	});
+
+	test("voter hashes differ between polls", () => {
+		const cipher = new PollCipher("secret");
+		expect(cipher.voterId(POLL, ALICE)).not.toBe(cipher.voterId("poll2", ALICE));
 	});
 });
 

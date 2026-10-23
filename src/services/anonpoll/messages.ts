@@ -20,7 +20,7 @@ export const CommandText = {
 	name: "anonpoll",
 	description: "Create an anonymous poll",
 	question: "The question to ask",
-	duration: "How long the poll stays open, e.g. 10min, 1hr, 1d, 1w (max 30d)",
+	duration: "How long the poll stays open, e.g. 10min, 1hr, 1w (default 1d, max 30d)",
 	choice: (n: number) => `Choice ${n}`,
 };
 

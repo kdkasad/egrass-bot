@@ -1,81 +1,48 @@
-import { Database } from "bun:sqlite";
+import { and, count, eq } from "drizzle-orm";
+
+import { anonPolls, anonPollVoters } from "../../db/schema";
+import type { DatabaseService, Transaction } from "../database";
+import type { PollCipher } from "./cipher";
 
 /**
  * Storage for anonymous polls.
  *
- * This deliberately lives in its own database file rather than the main one:
- * every table in the main database can be read by anyone through SQL queries
- * sent to the bot, which would leak results to non-voters, and the main
- * database logs query parameters, which would put a voter's ID and choice next
- * to each other in the logs.
- *
  * No individual ballots are stored. We record *who* has voted (to prevent
- * double voting and to gate results) and a counter per choice, and nothing
- * that links the two. Both tables are WITHOUT ROWID so rows are ordered by key
- * rather than insertion order, and there are no timestamps to correlate.
- *
- * WAL mode is deliberately not used: the WAL keeps a history of commits, and
- * each vote's commit touches both the voter list and one tally, so diffing
- * commits would reveal how each person voted. A rollback journal only holds
- * pages during a write and is deleted afterwards, and secure_delete zeroes
- * freed pages.
+ * double voting and to gate results) and a tally per poll, and nothing that
+ * links the two. The tables live in the main database, which anyone can read
+ * through SQL queries sent to the bot, so everything but the poll ID is
+ * encrypted or hashed with the secret key: see {@link PollCipher}.
  */
 export class AnonPollStore {
-	readonly #db: Database;
+	readonly #db: DatabaseService;
+	readonly #cipher: PollCipher;
 
-	constructor(filename: string) {
-		this.#db = new Database(filename, { strict: true, create: true });
-		this.#db.run("PRAGMA journal_mode = DELETE");
-		this.#db.run("PRAGMA secure_delete = ON");
-		this.#db.run("PRAGMA busy_timeout = 5000");
-		this.#migrate();
+	constructor(db: DatabaseService, cipher: PollCipher) {
+		this.#db = db;
+		this.#cipher = cipher;
 	}
 
-	/**
-	 * Applies any migrations newer than the database's `user_version`. This
-	 * database isn't managed by drizzle, so migrations live here. Append new
-	 * ones to the end; never edit existing ones.
-	 */
-	#migrate() {
-		const migrations: string[] = [
-			// 1: initial schema
-			`
-			CREATE TABLE IF NOT EXISTS anon_polls (
-				id TEXT PRIMARY KEY NOT NULL,
-				question TEXT NOT NULL,
-				choices TEXT NOT NULL
-			);
-			CREATE TABLE IF NOT EXISTS anon_poll_voters (
-				poll_id TEXT NOT NULL REFERENCES anon_polls(id),
-				user_id TEXT NOT NULL,
-				PRIMARY KEY (poll_id, user_id)
-			) WITHOUT ROWID;
-			CREATE TABLE IF NOT EXISTS anon_poll_tallies (
-				poll_id TEXT NOT NULL REFERENCES anon_polls(id),
-				choice_idx INTEGER NOT NULL,
-				count INTEGER NOT NULL DEFAULT 0,
-				PRIMARY KEY (poll_id, choice_idx)
-			) WITHOUT ROWID;
-			`,
-			// 2: deadlines. Polls from before this have no deadline or channel to
-			// announce in, so they are marked closed.
-			`
-			ALTER TABLE anon_polls ADD COLUMN channel_id TEXT NOT NULL DEFAULT '';
-			ALTER TABLE anon_polls ADD COLUMN message_id TEXT;
-			ALTER TABLE anon_polls ADD COLUMN closes_at INTEGER NOT NULL DEFAULT 0;
-			ALTER TABLE anon_polls ADD COLUMN closed INTEGER NOT NULL DEFAULT 0;
-			UPDATE anon_polls SET closed = 1;
-			`,
-		];
-		const { user_version: version } = this.#db
-			.query<{ user_version: number }, []>("PRAGMA user_version")
-			.get()!;
-		for (let v = version; v < migrations.length; v++) {
-			this.#db.transaction(() => {
-				this.#db.run(migrations[v]!);
-				this.#db.run(`PRAGMA user_version = ${v + 1}`);
-			})();
-		}
+	#encryptInfo(poll: PollInfo): Buffer {
+		const { id, ...info } = poll;
+		return this.#cipher.encrypt(id, "info", Buffer.from(JSON.stringify(info)));
+	}
+
+	#decryptInfo(row: { id: string; info: Uint8Array }): PollInfo {
+		return {
+			id: row.id,
+			...JSON.parse(this.#cipher.decrypt(row.id, "info", row.info).toString()),
+		};
+	}
+
+	#get(tx: Transaction, id: string) {
+		return tx.select().from(anonPolls).where(eq(anonPolls.id, id)).get();
+	}
+
+	#setInfo(tx: Transaction, poll: PollInfo) {
+		tx.update(anonPolls)
+			.set({ info: this.#encryptInfo(poll) })
+			.where(eq(anonPolls.id, poll.id))
+			.run();
 	}
 
 	/** @param closesAt seconds since epoch */
@@ -86,137 +53,115 @@ export class AnonPollStore {
 		channelId: string;
 		closesAt: number;
 	}) {
-		this.#db.transaction(() => {
-			this.#db
-				.query(
-					"INSERT INTO anon_polls (id, question, choices, channel_id, closes_at) VALUES (?, ?, ?, ?, ?)",
-				)
-				.run(
-					poll.id,
-					poll.question,
-					JSON.stringify(poll.choices),
-					poll.channelId,
-					poll.closesAt,
-				);
-			const insertTally = this.#db.query(
-				"INSERT INTO anon_poll_tallies (poll_id, choice_idx) VALUES (?, ?)",
-			);
-			for (let i = 0; i < poll.choices.length; i++) insertTally.run(poll.id, i);
-		})();
+		const info = this.#encryptInfo({ ...poll, messageId: null, closed: false });
+		const tally = this.#cipher.encryptTally(
+			poll.id,
+			poll.choices.map(() => 0),
+		);
+		this.#db.querySync("create anonymous poll", (tx) =>
+			tx.insert(anonPolls).values({ id: poll.id, info, tally }).run(),
+		);
 	}
 
 	setMessageId(pollId: string, messageId: string) {
-		this.#db.query("UPDATE anon_polls SET message_id = ? WHERE id = ?").run(messageId, pollId);
+		this.#db.querySync("set anonymous poll message", (tx) => {
+			const row = this.#get(tx, pollId);
+			if (row) this.#setInfo(tx, { ...this.#decryptInfo(row), messageId });
+		});
 	}
 
 	/** @param now seconds since epoch */
 	castVote(pollId: string, userId: string, choiceIdx: number, now: number): CastVoteResult {
-		return this.#db.transaction((): CastVoteResult => {
-			const poll = this.getPoll(pollId);
-			if (!poll) return "no_poll";
+		return this.#db.querySync("cast anonymous vote", (tx): CastVoteResult => {
+			const row = this.#get(tx, pollId);
+			if (!row) return "no_poll";
+			const poll = this.#decryptInfo(row);
 			// The close job runs once a minute, so also check the deadline itself.
 			if (poll.closed || poll.closesAt <= now) return "closed";
 			if (!Number.isInteger(choiceIdx) || choiceIdx < 0 || choiceIdx >= poll.choices.length) {
 				return "bad_choice";
 			}
-			const { changes } = this.#db
-				.query(
-					"INSERT INTO anon_poll_voters (poll_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-				)
-				.run(pollId, userId);
-			if (changes === 0) return "already_voted";
-			this.#db
-				.query(
-					"UPDATE anon_poll_tallies SET count = count + 1 WHERE poll_id = ? AND choice_idx = ?",
-				)
-				.run(pollId, choiceIdx);
+			const inserted = tx
+				.insert(anonPollVoters)
+				.values({ poll_id: pollId, voter: this.#cipher.voterId(pollId, userId) })
+				.onConflictDoNothing()
+				.returning()
+				.get();
+			if (!inserted) return "already_voted";
+			const counts = this.#cipher.decryptTally(pollId, row.tally);
+			counts[choiceIdx]!++;
+			tx.update(anonPolls)
+				.set({ tally: this.#cipher.encryptTally(pollId, counts) })
+				.where(eq(anonPolls.id, pollId))
+				.run();
 			return "ok";
-		})();
+		});
 	}
 
 	hasVoted(pollId: string, userId: string): boolean {
-		return (
-			this.#db
-				.query("SELECT 1 FROM anon_poll_voters WHERE poll_id = ? AND user_id = ?")
-				.get(pollId, userId) !== null
+		const voter = this.#cipher.voterId(pollId, userId);
+		return this.#db.querySync(
+			"check anonymous voter",
+			(tx) =>
+				tx
+					.select()
+					.from(anonPollVoters)
+					.where(and(eq(anonPollVoters.poll_id, pollId), eq(anonPollVoters.voter, voter)))
+					.get() !== undefined,
 		);
 	}
 
 	voterCount(pollId: string): number {
-		const row = this.#db
-			.query<
-				{ n: number },
-				[string]
-			>("SELECT count(*) AS n FROM anon_poll_voters WHERE poll_id = ?")
-			.get(pollId);
-		return row?.n ?? 0;
+		return this.#db.querySync(
+			"count anonymous voters",
+			(tx) =>
+				tx
+					.select({ n: count() })
+					.from(anonPollVoters)
+					.where(eq(anonPollVoters.poll_id, pollId))
+					.get()?.n ?? 0,
+		);
 	}
 
 	/**
-	 * Marks every open poll whose deadline has passed as closed.
+	 * Marks every open poll whose deadline has passed as closed. Deadlines are
+	 * encrypted, so this decrypts every poll; there are few enough for that.
 	 * @param now seconds since epoch
 	 * @returns the polls that were closed
 	 */
 	closeDuePolls(now: number): PollInfo[] {
-		return this.#db.transaction(() => {
-			const due = this.#db
-				.query<
-					{ id: string },
-					[number]
-				>("SELECT id FROM anon_polls WHERE closed = 0 AND closes_at <= ?")
-				.all(now);
-			const close = this.#db.query("UPDATE anon_polls SET closed = 1 WHERE id = ?");
-			for (const { id } of due) close.run(id);
-			return due.map(({ id }) => this.getPoll(id)!);
-		})();
+		return this.#db.querySync("close anonymous polls", (tx) => {
+			const due = tx
+				.select()
+				.from(anonPolls)
+				.all()
+				.map((row) => this.#decryptInfo(row))
+				.filter((p) => !p.closed && p.closesAt <= now)
+				.map((p) => ({ ...p, closed: true }));
+			for (const poll of due) this.#setInfo(tx, poll);
+			return due;
+		});
 	}
 
 	/** Deadlines (seconds since epoch) of polls that haven't been closed yet */
 	openPollDeadlines(): number[] {
 		return this.#db
-			.query<{ closes_at: number }, []>("SELECT closes_at FROM anon_polls WHERE closed = 0")
-			.all()
-			.map((r) => r.closes_at);
+			.querySync("open anonymous poll deadlines", (tx) => tx.select().from(anonPolls).all())
+			.map((row) => this.#decryptInfo(row))
+			.filter((p) => !p.closed)
+			.map((p) => p.closesAt);
 	}
 
 	getPoll(id: string): PollInfo | null {
-		const row = this.#db
-			.query<
-				{
-					question: string;
-					choices: string;
-					channel_id: string;
-					message_id: string | null;
-					closes_at: number;
-					closed: number;
-				},
-				[string]
-			>(
-				"SELECT question, choices, channel_id, message_id, closes_at, closed FROM anon_polls WHERE id = ?",
-			)
-			.get(id);
-		return (
-			row && {
-				id,
-				question: row.question,
-				choices: JSON.parse(row.choices),
-				channelId: row.channel_id,
-				messageId: row.message_id,
-				closesAt: row.closes_at,
-				closed: row.closed !== 0,
-			}
-		);
+		const row = this.#db.querySync("get anonymous poll", (tx) => this.#get(tx, id));
+		return row ? this.#decryptInfo(row) : null;
 	}
 
 	getResults(pollId: string): PollResults | null {
-		const poll = this.getPoll(pollId);
-		if (!poll) return null;
-		const counts = this.#db
-			.query<{ count: number }, [string]>(
-				"SELECT count FROM anon_poll_tallies WHERE poll_id = ? ORDER BY choice_idx",
-			)
-			.all(pollId)
-			.map((r) => r.count);
+		const row = this.#db.querySync("get anonymous poll results", (tx) => this.#get(tx, pollId));
+		if (!row) return null;
+		const poll = this.#decryptInfo(row);
+		const counts = this.#cipher.decryptTally(pollId, row.tally);
 		return {
 			question: poll.question,
 			choices: poll.choices.map((text, i) => ({ text, count: counts[i] ?? 0 })),

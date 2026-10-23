@@ -16,6 +16,7 @@ import { Feature } from "../../utils/service";
 import { traced, wrapInteractionDo } from "../../utils/tracing";
 import { ClockTimeSource, dateToSqlite, parseDuration, type TimeSource } from "../../utils/time";
 import type { CronService } from "../cron";
+import type { DatabaseService } from "../database";
 import type { DiscordService } from "../discord";
 import type { EnvService } from "../env";
 import {
@@ -28,6 +29,7 @@ import {
 	renderResults,
 } from "./messages";
 import { AnonPollStore, type PollInfo } from "./store";
+import { PollCipher } from "./cipher";
 
 enum ComponentPrefix {
 	Vote = "anonpoll/vote",
@@ -40,6 +42,7 @@ const MAX_CHOICE_LENGTH = 100;
 const MAX_QUESTION_LENGTH = 300;
 const MIN_DURATION_MS = parseDuration("1m");
 const MAX_DURATION_MS = parseDuration("30d");
+const DEFAULT_DURATION = "1d";
 /** setTimeout can't wait longer than this; the cron job closes polls past it */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 /**
@@ -60,9 +63,6 @@ export class AnonPollService extends Feature {
 					.setDescription(CommandText.question)
 					.setRequired(true)
 					.setMaxLength(MAX_QUESTION_LENGTH),
-			)
-			.addStringOption((o) =>
-				o.setName("duration").setDescription(CommandText.duration).setRequired(true),
 			);
 		for (let i = 1; i <= MAX_CHOICES; i++) {
 			builder.addStringOption((o) =>
@@ -73,6 +73,10 @@ export class AnonPollService extends Feature {
 					.setMaxLength(MAX_CHOICE_LENGTH),
 			);
 		}
+		// Discord requires optional options to come after required ones.
+		builder.addStringOption((o) =>
+			o.setName("duration").setDescription(CommandText.duration).setRequired(false),
+		);
 		return builder;
 	})();
 
@@ -83,13 +87,14 @@ export class AnonPollService extends Feature {
 	constructor(
 		env: EnvService,
 		discord: DiscordService,
+		db: DatabaseService,
 		cron: CronService,
 		timeSource: TimeSource = new ClockTimeSource(),
 	) {
 		super(env);
 		this.#discord = discord;
 		this.#time = timeSource;
-		this.#store = new AnonPollStore(env.vars.ANONPOLL_DATABASE_FILE);
+		this.#store = new AnonPollStore(db, new PollCipher(env.vars.ANONPOLL_SECRET));
 		if (this.isEnabled()) {
 			this.#discord.registerSlashCommand(AnonPollService.#commandSpec, (i) =>
 				this.#handleCommand(i),
@@ -133,7 +138,9 @@ export class AnonPollService extends Feature {
 	@traced("event.handler")
 	async #handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
 		const question = interaction.options.getString("question", true).trim();
-		const durationMs = parseDuration(interaction.options.getString("duration", true));
+		const durationMs = parseDuration(
+			interaction.options.getString("duration") ?? DEFAULT_DURATION,
+		);
 		const choices: string[] = [];
 		for (let i = 1; i <= MAX_CHOICES; i++) {
 			const choice = interaction.options.getString(`choice${i}`)?.trim();

@@ -14,11 +14,6 @@ self.addEventListener(
 		const rodb = new Database(dbFile, { readonly: true, readwrite: false });
 		rodb.run("PRAGMA query_only = 1;");
 		try {
-			// ATTACH would let a query read other database files, such as the
-			// anonymous poll database, whose results must stay private.
-			if (/^(\s|--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/)*attach\b/i.test(sql)) {
-				throw new Error("ATTACH is not allowed");
-			}
 			const query = rodb.prepare<Record<string, unknown>, []>(sql);
 			const results = query.all();
 			(async () => {
