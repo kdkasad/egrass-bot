@@ -238,9 +238,9 @@ export class QueryService extends Feature {
 		} catch (error) {
 			if (error instanceof Error) {
 				if (
-					error.name !== TimeoutError.name &&
 					error.name !== Bun.SQL.SQLiteError.name &&
-					error.name !== PrqlError.name
+					!(error instanceof TimeoutError) &&
+					!(error instanceof PrqlError)
 				) {
 					Sentry.captureException(error);
 					Sentry.logger.error(
