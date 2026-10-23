@@ -14,6 +14,8 @@ const schema = z.object({
 		.transform((s) => new Set(s.toLowerCase().split(","))),
 
 	AUTH_SECRET: z.string().nonempty(),
+	/** Encrypts anonymous poll data; changing it makes existing polls unreadable */
+	ANONPOLL_SECRET: z.string().nonempty(),
 
 	MINECRAFT_RCON_HOST: z.string().default("127.0.0.1"),
 	MINECRAFT_RCON_PORT: z.coerce.number().default(25575),

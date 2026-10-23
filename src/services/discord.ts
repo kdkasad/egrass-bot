@@ -19,6 +19,7 @@ import {
 	type RepliableInteraction,
 	ButtonInteraction,
 	ModalSubmitInteraction,
+	StringSelectMenuInteraction,
 } from "discord.js";
 import * as Sentry from "@sentry/bun";
 import { Feature } from "../utils/service";
@@ -269,6 +270,11 @@ export class DiscordService extends Feature {
 	#buttonDispatcherCreated: boolean = false;
 	#modalHandlers: Record<string, (interaction: ModalSubmitInteraction) => Promise<void>> = {};
 	#modalDispatcherCreated: boolean = false;
+	#selectMenuHandlers: Record<
+		string,
+		(interaction: StringSelectMenuInteraction) => Promise<void>
+	> = {};
+	#selectMenuDispatcherCreated: boolean = false;
 
 	/**
 	 * Private constructor, used to construct class once ready client is created.
@@ -575,6 +581,50 @@ export class DiscordService extends Feature {
 				}
 			});
 			this.#modalDispatcherCreated = true;
+		}
+	}
+
+	/**
+	 * Registers a handler for string select menus whose custom ID starts with
+	 * `customIdPrefix`. The selected values are intentionally not logged.
+	 */
+	registerSelectMenuHandler(
+		customIdPrefix: string,
+		handler: (interaction: StringSelectMenuInteraction) => Promise<void>,
+	) {
+		if (customIdPrefix in this.#selectMenuHandlers) {
+			throw new Error(`Select menu handler for "${customIdPrefix}" is already registered`);
+		}
+		this.#selectMenuHandlers[customIdPrefix] = handler;
+
+		if (!this.#selectMenuDispatcherCreated) {
+			this.client.on("interactionCreate", (interaction) => {
+				if (interaction.isStringSelectMenu()) {
+					return Sentry.startSpan(
+						{
+							parentSpan: null,
+							name: "select menu used",
+							op: "discord.event",
+							attributes: {
+								"interaction.id": interaction.id,
+								"interaction.type": InteractionType[interaction.type],
+								"user.id": interaction.user.id,
+								"user.name": interaction.user.displayName,
+								"select.custom_id": interaction.customId,
+							},
+						},
+						() => {
+							const prefix = interaction.customId.split(":")[0]!;
+							const handler = this.#selectMenuHandlers[prefix];
+							if (!handler) {
+								throw new Error(`No handler registered for select menu`);
+							}
+							return Sentry.withIsolationScope(() => handler(interaction));
+						},
+					);
+				}
+			});
+			this.#selectMenuDispatcherCreated = true;
 		}
 	}
 }

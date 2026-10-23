@@ -4,6 +4,7 @@
  * @returns the duration in milliseconds
  */
 export function parseDuration(duration: string): number {
+	const weeks = duration.match(/(\d+(?:\.\d+)?)\s*w/);
 	const days = duration.match(/(\d+(?:\.\d+)?)\s*d/);
 	const hours = duration.match(/(\d+(?:\.\d+)?)\s*h/);
 	const minutes = duration.match(/(\d+(?:\.\d+)?)\s*m($|[^s])/);
@@ -16,7 +17,8 @@ export function parseDuration(duration: string): number {
 			matchToNum(seconds) * 1000 +
 			matchToNum(minutes) * 1000 * 60 +
 			matchToNum(hours) * 1000 * 60 * 60 +
-			matchToNum(days) * 1000 * 60 * 60 * 24,
+			matchToNum(days) * 1000 * 60 * 60 * 24 +
+			matchToNum(weeks) * 1000 * 60 * 60 * 24 * 7,
 	);
 }
 
