@@ -11,13 +11,19 @@ function plural(n: number, word: string) {
 	return `${n} ${n === 1 ? word : `${word}s`}`;
 }
 
-/** Slash command name, descriptions, and option descriptions */
+/** Slash command name and description */
 export const CommandText = {
 	name: "anon-poll",
 	description: "Create an anonymous poll",
-	question: "The question to ask",
-	duration: "How long the poll stays open, e.g. 10min, 1hr, 1w (default 1d, max 1w)",
-	choice: (n: number) => `Choice ${n}`,
+};
+
+export const ModalText = {
+	title: "Create anonymous poll",
+	question: "Question",
+	choices: "Choices",
+	choicesDescription: "One choice per line. 2–10 choices, up to 100 characters each.",
+	duration: "Duration",
+	durationDescription: "1 minute to 1 week, e.g. 10min, 1h30m, 1w. Defaults to 1d.",
 };
 
 /** Labels on the poll's dropdown and buttons */
@@ -26,13 +32,16 @@ export const ComponentText = {
 	viewResults: "View results",
 };
 
-/** Errors shown (privately) to the poll creator when `/anonpoll` is used wrong */
+/** Errors shown (privately) to the poll creator when the creation form is invalid */
 export const CreateErrors = {
+	tryAgain: "Run /anon-poll again to re-enter your poll.",
+	questionTooLong: "The question must be at most 300 characters.",
+	tooManyChoices: "A poll can have at most ten choices.",
+	choiceTooLong: "Each choice must be at most 100 characters.",
 	emptyQuestion: "The question can't be empty.",
 	badDuration:
-		"The duration must be between 1 minute and 1 week, e.g. `10min`, `1hr`, `1d`, or `1w`.",
-	tooFewChoices: "A poll needs at least two choices.",
-	duplicateChoices: "Choices must be distinct.",
+		"The duration must be between 1 minute and 1 week, e.g. `10min`, `1hr`, `1d`, `1w`.",
+	tooFewChoices: "A poll needs at least two distinct choices.",
 };
 
 /** Private replies to voters and people pressing "View results" */

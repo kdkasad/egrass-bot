@@ -5,7 +5,7 @@
  * - Nobody can know who voted for which choices
  * - Only those who voted can see the results
  * - Results are not visible to anyone until the poll ends
- * - Polls have [1, 10] choices
+ * - Polls have [2, 10] choices
  * - Poll duration is [1 minute, 1 week]
  */
 
@@ -16,11 +16,16 @@ import {
 	ButtonStyle,
 	InteractionContextType,
 	MessageFlags,
+	LabelBuilder,
+	ModalBuilder,
+	TextInputBuilder,
+	TextInputStyle,
 	SlashCommandBuilder,
 	StringSelectMenuBuilder,
 	type ButtonInteraction,
 	type ChatInputCommandInteraction,
 	type StringSelectMenuInteraction,
+	type ModalSubmitInteraction,
 } from "discord.js";
 
 import { Feature } from "../../utils/service";
@@ -33,6 +38,7 @@ import {
 	CommandText,
 	ComponentText,
 	CreateErrors,
+	ModalText,
 	Replies,
 	renderClosedAnnouncement,
 	renderPollMessage,
@@ -42,6 +48,7 @@ import { AnonPollStore, type PollInfo } from "./store";
 import { PollCipher } from "./cipher";
 
 enum ComponentPrefix {
+	Create = "anonpoll/create",
 	Vote = "anonpoll/vote",
 	Results = "anonpoll/results",
 }
@@ -55,32 +62,10 @@ const MAX_DURATION_MS = parseDuration("1w");
 const DEFAULT_DURATION = "1d";
 
 export class AnonPollService extends Feature {
-	static #commandSpec = (() => {
-		const builder = new SlashCommandBuilder()
-			.setName(CommandText.name)
-			.setDescription(CommandText.description)
-			.setContexts(InteractionContextType.Guild)
-			.addStringOption((o) =>
-				o
-					.setName("question")
-					.setDescription(CommandText.question)
-					.setRequired(true)
-					.setMaxLength(MAX_QUESTION_LENGTH),
-			);
-		for (let i = 1; i <= MAX_CHOICES; i++) {
-			builder.addStringOption((o) =>
-				o
-					.setName(`choice${i}`)
-					.setDescription(CommandText.choice(i))
-					.setRequired(i == 1)
-					.setMaxLength(MAX_CHOICE_LENGTH),
-			);
-		}
-		builder.addStringOption((o) =>
-			o.setName("duration").setDescription(CommandText.duration).setRequired(false),
-		);
-		return builder;
-	})();
+	static #commandSpec = new SlashCommandBuilder()
+		.setName(CommandText.name)
+		.setDescription(CommandText.description)
+		.setContexts(InteractionContextType.Guild);
 
 	#discord: DiscordService;
 	#store: AnonPollStore;
@@ -95,10 +80,14 @@ export class AnonPollService extends Feature {
 		super(env);
 		this.#discord = discord;
 		this.#time = timeSource;
-		this.#store = new AnonPollStore(db, new PollCipher(env.vars.ANONPOLL_SECRET));
+		const cipher = new PollCipher(env.vars.ANONPOLL_SECRET);
+		this.#store = new AnonPollStore(db, cipher);
 		if (this.isEnabled()) {
 			this.#discord.registerSlashCommand(AnonPollService.#commandSpec, (i) =>
 				this.#handleCommand(i),
+			);
+			this.#discord.registerModalHandler(ComponentPrefix.Create, (i) =>
+				this.#handleSubmit(i),
 			);
 			this.#discord.registerSelectMenuHandler(ComponentPrefix.Vote, (i) =>
 				this.#handleVote(i),
@@ -116,16 +105,16 @@ export class AnonPollService extends Feature {
 
 	#scheduleClose(pollId: string, closesAt: Date) {
 		// Expired polls restored at startup close on the next event-loop turn.
-		const delay = Math.max(0, closesAt.getTime() - this.#time.now().getTime());
-		setTimeout(
-			() => {
-				// Recheck in case the clock moved backwards. Capping also supports
-				// existing polls created under the previous 30-day duration limit.
-				if (this.#time.now() < closesAt) this.#scheduleClose(pollId, closesAt);
-				else void this.#closePoll(pollId).catch((e) => Sentry.captureException(e));
-			},
-			Math.min(delay, 2 ** 31 - 1),
-		).unref();
+		const delay = Math.min(
+			Math.max(0, closesAt.getTime() - this.#time.now().getTime()),
+			// Maximum delay supported by setTimeout()
+			2 ** 31 - 1,
+		);
+		setTimeout(() => {
+			// Recheck in case the timer was supposed to be longer but was capped by the setTimeout() limit
+			if (this.#time.now() < closesAt) this.#scheduleClose(pollId, closesAt);
+			else void this.#closePoll(pollId).catch((e) => Sentry.captureException(e));
+		}, delay).unref();
 	}
 
 	/** True once voting has ended, even if the poll hasn't been formally closed yet */
@@ -133,37 +122,89 @@ export class AnonPollService extends Feature {
 		if (poll.closed) return true;
 		if (poll.closesAt > this.#time.now()) return false;
 		// The close timer hasn't fired yet; close it now so the announcement goes out.
-		void this.#closePoll(poll.id).catch((e) => Sentry.captureException(e));
+		this.#closePoll(poll.id).catch((e) => Sentry.captureException(e));
 		return true;
 	}
 
 	@traced("event.handler")
 	async #handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-		const question = interaction.options.getString("question", true).trim();
-		const durationMs = parseDuration(
-			interaction.options.getString("duration") ?? DEFAULT_DURATION,
+		await interaction.showModal(
+			new ModalBuilder()
+				.setCustomId(ComponentPrefix.Create)
+				.setTitle(ModalText.title)
+				.addLabelComponents(
+					new LabelBuilder()
+						.setLabel(ModalText.question)
+						.setTextInputComponent(
+							new TextInputBuilder()
+								.setCustomId("question")
+								.setStyle(TextInputStyle.Short)
+								.setRequired(true)
+								.setMaxLength(MAX_QUESTION_LENGTH),
+						),
+					new LabelBuilder()
+						.setLabel(ModalText.choices)
+						.setDescription(ModalText.choicesDescription)
+						.setTextInputComponent(
+							new TextInputBuilder()
+								.setCustomId("choices")
+								.setStyle(TextInputStyle.Paragraph)
+								.setRequired(true)
+								.setMaxLength(
+									// Discord's max is 4000
+									Math.min((MAX_CHOICE_LENGTH + 1) * MAX_CHOICES, 4000),
+								),
+						),
+					new LabelBuilder()
+						.setLabel(ModalText.duration)
+						.setDescription(ModalText.durationDescription)
+						.setTextInputComponent(
+							new TextInputBuilder()
+								.setCustomId("duration")
+								.setStyle(TextInputStyle.Short)
+								.setRequired(false)
+								.setValue(DEFAULT_DURATION)
+								.setMaxLength(100),
+						),
+				),
 		);
-		const choices: string[] = [];
-		for (let i = 1; i <= MAX_CHOICES; i++) {
-			const choice = interaction.options.getString(`choice${i}`)?.trim();
-			if (choice) choices.push(choice);
-		}
+	}
+
+	@traced("event.handler")
+	async #handleSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+		const question = interaction.fields.getTextInputValue("question").trim();
+		const choices = Array.from(
+			// Deduplicate choices
+			new Set(
+				interaction.fields
+					.getTextInputValue("choices")
+					.split("\n")
+					.map((line) => line.trim())
+					.filter(Boolean),
+			),
+		);
+		const durationMs = parseDuration(
+			interaction.fields.getTextInputValue("duration").trim() || DEFAULT_DURATION,
+		);
 
 		let error: string | undefined;
 		if (!question) error = CreateErrors.emptyQuestion;
+		else if (question.length > MAX_QUESTION_LENGTH) error = CreateErrors.questionTooLong;
 		else if (durationMs < MIN_DURATION_MS || durationMs > MAX_DURATION_MS)
 			error = CreateErrors.badDuration;
 		else if (choices.length < 2) error = CreateErrors.tooFewChoices;
-		else if (new Set(choices).size !== choices.length) error = CreateErrors.duplicateChoices;
+		else if (choices.length > MAX_CHOICES) error = CreateErrors.tooManyChoices;
+		else if (choices.some((choice) => choice.length > MAX_CHOICE_LENGTH))
+			error = CreateErrors.choiceTooLong;
 		if (error) {
 			await wrapInteractionDo(
 				interaction,
 				"reply",
-			)({ content: error, flags: [MessageFlags.Ephemeral] });
+			)({ content: `${error} ${CreateErrors.tryAgain}`, flags: [MessageFlags.Ephemeral] });
 			return;
 		}
 
-		// The interaction ID is a unique snowflake, so it doubles as the poll ID.
+		// The interaction ID is a unique snowflake so we use it as the poll ID
 		const poll: PollInfo = {
 			id: interaction.id,
 			question,
@@ -240,16 +281,15 @@ export class AnonPollService extends Feature {
 			"reply",
 		)({ content: messages[result], flags: [MessageFlags.Ephemeral] });
 
+		if (!poll) return;
 		// Re-rendering the message also clears the voter's selection in the dropdown.
-		if (poll && !this.#isPastDeadline(poll)) {
-			try {
-				await interaction.message.edit({
-					content: renderPollMessage(poll, this.#store.voterCount(pollId)),
-					allowedMentions: { parse: [] },
-				});
-			} catch (e) {
-				Sentry.captureException(e);
-			}
+		try {
+			await interaction.message.edit({
+				content: renderPollMessage(poll, this.#store.voterCount(pollId)),
+				allowedMentions: { parse: [] },
+			});
+		} catch (e) {
+			Sentry.captureException(e);
 		}
 	}
 
