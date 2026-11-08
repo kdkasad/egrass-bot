@@ -228,21 +228,22 @@ export const bountyClaims = sqliteTable(
 	(t) => [index("idx_bounty_claims_bounty_id_status").on(t.bounty_id, t.status)],
 );
 
-/**
- * Anonymous polls. The main database is readable through SQL queries sent to
- * the bot, so everything except the poll ID is encrypted with a secret key (see
- * `src/services/anonpoll/cipher.ts`).
- */
-export const anonPolls = sqliteTable("anon_polls", {
-	id: text("id").primaryKey().notNull(),
-	/** Encrypted question, choices, channel, message, deadline and closed flag */
-	info: blob("info", { mode: "buffer" }).notNull(),
-	/**
-	 * Encrypted vote counts. Every vote rewrites the whole blob at the same
-	 * length, so neither the WAL nor the query log shows which choice changed.
-	 */
-	tally: blob("tally", { mode: "buffer" }).notNull(),
-});
+/** Public poll metadata; tallies and voter identities are protected separately. */
+export const anonPolls = sqliteTable(
+	"anon_polls",
+	{
+		id: text("id").primaryKey().notNull(),
+		question: text("question").notNull(),
+		choices: text("choices", { mode: "json" }).$type<string[]>().notNull(),
+		channelId: text("channel_id").notNull(),
+		messageId: text("message_id"),
+		closesAt: integer("closes_at", { mode: "timestamp" }).notNull(),
+		closed: integer("closed", { mode: "boolean" }).notNull().default(false),
+		/** Fixed-length encrypted counters hide counts and which choice changed. */
+		tally: blob("tally", { mode: "buffer" }).notNull(),
+	},
+	(t) => [index("idx_anon_polls_closed_deadline").on(t.closed, t.closesAt)],
+);
 
 /**
  * Who has voted in each anonymous poll, as a keyed hash of the poll and user

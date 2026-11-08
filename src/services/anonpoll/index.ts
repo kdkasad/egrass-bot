@@ -15,7 +15,6 @@ import {
 import { Feature } from "../../utils/service";
 import { traced, wrapInteractionDo } from "../../utils/tracing";
 import { ClockTimeSource, dateToSqlite, parseDuration, type TimeSource } from "../../utils/time";
-import type { CronService } from "../cron";
 import type { DatabaseService } from "../database";
 import type { DiscordService } from "../discord";
 import type { EnvService } from "../env";
@@ -41,16 +40,8 @@ const MAX_CHOICES = 10;
 const MAX_CHOICE_LENGTH = 100;
 const MAX_QUESTION_LENGTH = 300;
 const MIN_DURATION_MS = parseDuration("1m");
-const MAX_DURATION_MS = parseDuration("30d");
+const MAX_DURATION_MS = parseDuration("1w");
 const DEFAULT_DURATION = "1d";
-/** setTimeout can't wait longer than this; the cron job closes polls past it */
-const MAX_TIMER_MS = 2 ** 31 - 1;
-/**
- * Deadlines are stored in whole seconds, so a timer that fires a few
- * milliseconds early would find nothing to close.
- */
-const TIMER_MARGIN_MS = 1000;
-
 export class AnonPollService extends Feature {
 	static #commandSpec = (() => {
 		const builder = new SlashCommandBuilder()
@@ -88,7 +79,6 @@ export class AnonPollService extends Feature {
 		env: EnvService,
 		discord: DiscordService,
 		db: DatabaseService,
-		cron: CronService,
 		timeSource: TimeSource = new ClockTimeSource(),
 	) {
 		super(env);
@@ -105,33 +95,34 @@ export class AnonPollService extends Feature {
 			this.#discord.registerButtonHandler(ComponentPrefix.Results, (i) =>
 				this.#handleResults(i),
 			);
-			// Each poll gets a timer for its deadline. The cron job is a backstop for
-			// polls whose deadline is too far away for a timer.
-			cron.createJob("close anonymous polls", "* * * * *", () => this.#closeDuePolls());
-			for (const closesAt of this.#store.openPollDeadlines()) this.#scheduleClose(closesAt);
+			for (const poll of this.#store.openPollDeadlines())
+				this.#scheduleClose(poll.id, poll.closesAt);
 			Sentry.logger.info(`${this._name} initialized`);
 		} else {
 			Sentry.logger.info(`${this._name} disabled`);
 		}
 	}
 
-	#now(): number {
-		return dateToSqlite(this.#time.now());
-	}
-
-	/** @param closesAt seconds since epoch */
-	#scheduleClose(closesAt: number) {
-		const delay = Math.max(0, closesAt * 1000 - this.#time.now().getTime() + TIMER_MARGIN_MS);
-		if (delay > MAX_TIMER_MS) return;
-		setTimeout(() => void this.#closeDuePolls(), delay).unref();
+	#scheduleClose(pollId: string, closesAt: Date) {
+		// Expired polls restored at startup close on the next event-loop turn.
+		const delay = Math.max(0, closesAt.getTime() - this.#time.now().getTime());
+		setTimeout(
+			() => {
+				// Recheck in case the clock moved backwards. Capping also supports
+				// existing polls created under the previous 30-day duration limit.
+				if (this.#time.now() < closesAt) this.#scheduleClose(pollId, closesAt);
+				else void this.#closePoll(pollId).catch((e) => Sentry.captureException(e));
+			},
+			Math.min(delay, 2 ** 31 - 1),
+		).unref();
 	}
 
 	/** True once voting has ended, even if the poll hasn't been formally closed yet */
 	#isPastDeadline(poll: PollInfo): boolean {
 		if (poll.closed) return true;
-		if (poll.closesAt > this.#now()) return false;
+		if (poll.closesAt > this.#time.now()) return false;
 		// The close timer hasn't fired yet; close it now so the announcement goes out.
-		void this.#closeDuePolls();
+		void this.#closePoll(poll.id).catch((e) => Sentry.captureException(e));
 		return true;
 	}
 
@@ -168,7 +159,7 @@ export class AnonPollService extends Feature {
 			choices,
 			channelId: interaction.channelId,
 			messageId: null,
-			closesAt: this.#now() + Math.round(durationMs / 1000),
+			closesAt: new Date(this.#time.now().getTime() + durationMs),
 			closed: false,
 		};
 		this.#store.createPoll(poll);
@@ -188,7 +179,7 @@ export class AnonPollService extends Feature {
 		});
 		const message = await interaction.fetchReply();
 		this.#store.setMessageId(poll.id, message.id);
-		this.#scheduleClose(poll.closesAt);
+		this.#scheduleClose(poll.id, poll.closesAt);
 		Sentry.logger.info("Anonymous poll created", {
 			"poll.id": poll.id,
 			"poll.choices": choices.length,
@@ -210,7 +201,12 @@ export class AnonPollService extends Feature {
 	async #handleVote(interaction: StringSelectMenuInteraction): Promise<void> {
 		const pollId = interaction.customId.split(":")[1]!;
 		const choiceIdx = Number(interaction.values[0]);
-		const result = this.#store.castVote(pollId, interaction.user.id, choiceIdx, this.#now());
+		const result = this.#store.castVote(
+			pollId,
+			interaction.user.id,
+			choiceIdx,
+			this.#time.now(),
+		);
 
 		const poll = this.#store.getPoll(pollId);
 		const messages: Record<typeof result, string> = {
@@ -254,43 +250,42 @@ export class AnonPollService extends Feature {
 	}
 
 	@traced()
-	async #closeDuePolls() {
-		const closed = this.#store.closeDuePolls(this.#now());
-		for (const poll of closed) {
-			const voters = this.#store.voterCount(poll.id);
-			Sentry.logger.info("Anonymous poll closed", {
-				"poll.id": poll.id,
-				"poll.voters": voters,
-			});
-			try {
-				const channel = await this.#discord.client.channels.fetch(poll.channelId);
-				if (!channel?.isSendable()) throw new Error("Poll channel is not sendable");
-				if (poll.messageId) {
-					// Remove the vote dropdown; results are reached from the announcement.
-					// The poll message may have been deleted, which shouldn't stop the
-					// announcement.
-					try {
-						const message = await channel.messages.fetch(poll.messageId);
-						await message.edit({
-							content: renderPollMessage(poll, voters),
-							components: [],
-							allowedMentions: { parse: [] },
-						});
-					} catch (e) {
-						Sentry.captureException(e);
-					}
+	async #closePoll(pollId: string) {
+		const poll = this.#store.closePoll(pollId, this.#time.now());
+		if (!poll) return;
+		const voters = this.#store.voterCount(poll.id);
+		Sentry.logger.info("Anonymous poll closed", {
+			"poll.id": poll.id,
+			"poll.voters": voters,
+		});
+		try {
+			const channel = await this.#discord.client.channels.fetch(poll.channelId);
+			if (!channel?.isSendable()) throw new Error("Poll channel is not sendable");
+			if (poll.messageId) {
+				// Remove the vote dropdown; results are reached from the announcement.
+				// The poll message may have been deleted, which shouldn't stop the
+				// announcement.
+				try {
+					const message = await channel.messages.fetch(poll.messageId);
+					await message.edit({
+						content: renderPollMessage(poll, voters),
+						components: [],
+						allowedMentions: { parse: [] },
+					});
+				} catch (e) {
+					Sentry.captureException(e);
 				}
-				await channel.send({
-					content: renderClosedAnnouncement(poll, voters),
-					components: [AnonPollService.#resultsRow(poll.id)],
-					reply: poll.messageId
-						? { messageReference: poll.messageId, failIfNotExists: false }
-						: undefined,
-					allowedMentions: { parse: [] },
-				});
-			} catch (e) {
-				Sentry.captureException(e);
 			}
+			await channel.send({
+				content: renderClosedAnnouncement(poll, voters),
+				components: [AnonPollService.#resultsRow(poll.id)],
+				reply: poll.messageId
+					? { messageReference: poll.messageId, failIfNotExists: false }
+					: undefined,
+				allowedMentions: { parse: [] },
+			});
+		} catch (e) {
+			Sentry.captureException(e);
 		}
 	}
 }

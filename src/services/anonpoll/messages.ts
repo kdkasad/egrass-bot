@@ -1,9 +1,5 @@
 /**
- * All user-facing text for anonymous polls. Edit wording here.
- *
- * `<t:SECONDS:R>` is Discord's timestamp syntax; it renders as a relative time
- * like "in 2 hours" in each viewer's timezone. `-# ` makes a line small grey
- * text.
+ * All user-facing text for anonymous polls.
  */
 
 import type { PollInfo, PollResults } from "./store";
@@ -20,7 +16,7 @@ export const CommandText = {
 	name: "anonpoll",
 	description: "Create an anonymous poll",
 	question: "The question to ask",
-	duration: "How long the poll stays open, e.g. 10min, 1hr, 1w (default 1d, max 30d)",
+	duration: "How long the poll stays open, e.g. 10min, 1hr, 1w (default 1d, max 1w)",
 	choice: (n: number) => `Choice ${n}`,
 };
 
@@ -34,7 +30,7 @@ export const ComponentText = {
 export const CreateErrors = {
 	emptyQuestion: "The question can't be empty.",
 	badDuration:
-		"The duration must be between 1 minute and 30 days, e.g. `10min`, `1hr`, `1d`, or `1w`.",
+		"The duration must be between 1 minute and 1 week, e.g. `10min`, `1hr`, `1d`, or `1w`.",
 	tooFewChoices: "A poll needs at least two choices.",
 	duplicateChoices: "Choices must be distinct.",
 };
