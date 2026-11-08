@@ -235,7 +235,6 @@ export const anonPolls = sqliteTable(
 		id: text("id").primaryKey().notNull(),
 		question: text("question").notNull(),
 		choices: text("choices", { mode: "json" }).$type<string[]>().notNull(),
-		channelId: text("channel_id").notNull(),
 		messageId: text("message_id"),
 		closesAt: integer("closes_at", { mode: "timestamp" }).notNull(),
 		closed: integer("closed", { mode: "boolean" }).notNull().default(false),

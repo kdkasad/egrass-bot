@@ -1,3 +1,14 @@
+/*
+ * Anonymous poll semantics/invariants:
+ * - Poll question and choices are public information
+ * - Nobody can know who voted
+ * - Nobody can know who voted for which choices
+ * - Only those who voted can see the results
+ * - Results are not visible to anyone until the poll ends
+ * - Polls have [1, 10] choices
+ * - Poll duration is [1 minute, 1 week]
+ */
+
 import * as Sentry from "@sentry/bun";
 import {
 	ActionRowBuilder,
@@ -42,6 +53,7 @@ const MAX_QUESTION_LENGTH = 300;
 const MIN_DURATION_MS = parseDuration("1m");
 const MAX_DURATION_MS = parseDuration("1w");
 const DEFAULT_DURATION = "1d";
+
 export class AnonPollService extends Feature {
 	static #commandSpec = (() => {
 		const builder = new SlashCommandBuilder()
@@ -60,11 +72,10 @@ export class AnonPollService extends Feature {
 				o
 					.setName(`choice${i}`)
 					.setDescription(CommandText.choice(i))
-					.setRequired(i <= 2)
+					.setRequired(i == 1)
 					.setMaxLength(MAX_CHOICE_LENGTH),
 			);
 		}
-		// Discord requires optional options to come after required ones.
 		builder.addStringOption((o) =>
 			o.setName("duration").setDescription(CommandText.duration).setRequired(false),
 		);
@@ -157,7 +168,6 @@ export class AnonPollService extends Feature {
 			id: interaction.id,
 			question,
 			choices,
-			channelId: interaction.channelId,
 			messageId: null,
 			closesAt: new Date(this.#time.now().getTime() + durationMs),
 			closed: false,
@@ -169,16 +179,25 @@ export class AnonPollService extends Feature {
 			.setPlaceholder(ComponentText.votePlaceholder)
 			.addOptions(choices.map((label, i) => ({ label, value: String(i) })));
 
-		await wrapInteractionDo(
+		const response = await wrapInteractionDo(
 			interaction,
 			"reply",
 		)({
 			content: renderPollMessage(poll, 0),
 			components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
 			allowedMentions: { parse: [] },
+			withResponse: true,
 		});
-		const message = await interaction.fetchReply();
-		this.#store.setMessageId(poll.id, message.id);
+		const message = response.resource?.message ?? null;
+		if (!message) throw new Error("response.resource.message is null or undefined");
+		this.#store.setMessage(poll.id, {
+			message_id: message.id,
+			guild_id: message.guildId!,
+			channel_id: message.channelId,
+			user_id: message.author.id,
+			timestamp: dateToSqlite(message.createdAt),
+			content: message.content,
+		});
 		this.#scheduleClose(poll.id, poll.closesAt);
 		Sentry.logger.info("Anonymous poll created", {
 			"poll.id": poll.id,
@@ -259,7 +278,9 @@ export class AnonPollService extends Feature {
 			"poll.voters": voters,
 		});
 		try {
-			const channel = await this.#discord.client.channels.fetch(poll.channelId);
+			const channelId = this.#store.getChannelId(poll.id);
+			if (!channelId) throw new Error("Poll message is not tracked");
+			const channel = await this.#discord.client.channels.fetch(channelId);
 			if (!channel?.isSendable()) throw new Error("Poll channel is not sendable");
 			if (poll.messageId) {
 				// Remove the vote dropdown; results are reached from the announcement.

@@ -10,7 +10,7 @@ describe("render", () => {
 		id: POLL,
 		question: "Q?",
 		choices: ["A", "B"],
-		channelId: "chan",
+
 		messageId: "msg",
 		closesAt: CLOSES,
 		closed: false,

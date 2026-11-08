@@ -13,7 +13,7 @@ function plural(n: number, word: string) {
 
 /** Slash command name, descriptions, and option descriptions */
 export const CommandText = {
-	name: "anonpoll",
+	name: "anon-poll",
 	description: "Create an anonymous poll",
 	question: "The question to ask",
 	duration: "How long the poll stays open, e.g. 10min, 1hr, 1w (default 1d, max 1w)",

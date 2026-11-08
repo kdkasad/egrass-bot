@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { QueryResultFormat, type QueryWorkerResult } from "../../types/query";
-import { anonPolls, anonPollVoters } from "../../db/schema";
 import type { CronService } from "../cron";
 import { DatabaseService } from "../database";
 import type { EnvService } from "../env";
@@ -46,10 +45,17 @@ describe("AnonPollStore", () => {
 			id: POLL,
 			question: "Pizza or tacos?",
 			choices: ["Pizza", "Tacos", "Neither"],
-			channelId: "chan",
+
 			closesAt: CLOSES,
 		});
-		store.setMessageId(POLL, "msg");
+		store.setMessage(POLL, {
+			message_id: "msg",
+			guild_id: "g",
+			channel_id: "chan",
+			user_id: "bot",
+			timestamp: 1,
+			content: "poll",
+		});
 	});
 
 	test("new poll is open with zero votes", () => {
@@ -58,12 +64,29 @@ describe("AnonPollStore", () => {
 			id: POLL,
 			question: "Pizza or tacos?",
 			choices: ["Pizza", "Tacos", "Neither"],
-			channelId: "chan",
+
 			messageId: "msg",
 			closesAt: CLOSES,
 			closed: false,
 		});
 		expect(store.getResults(POLL)!.choices.map((c) => c.count)).toEqual([0, 0, 0]);
+	});
+
+	test("channel lookup uses the tracked message and tolerates an existing row", () => {
+		expect(store.getChannelId(POLL)).toBe("chan");
+		// Simulate tracking winning the race to save the message.
+		store.setMessage(POLL, {
+			message_id: "msg",
+			guild_id: "g",
+			channel_id: "other",
+			user_id: "bot",
+			timestamp: 1,
+			content: "poll",
+		});
+		expect(store.getChannelId(POLL)).toBe("chan");
+		expect(store.getChannelId("missing")).toBeNull();
+		store.createPoll({ id: "unlinked", question: "Q?", choices: ["A", "B"], closesAt: CLOSES });
+		expect(store.getChannelId("unlinked")).toBeNull();
 	});
 
 	test("votes are tallied and voters recorded", () => {
@@ -99,7 +122,7 @@ describe("AnonPollStore", () => {
 			id: "later",
 			question: "Later?",
 			choices: ["Yes", "No"],
-			channelId: "chan",
+
 			closesAt: addSeconds(CLOSES, 1),
 		});
 		expect(store.closePoll(POLL, addSeconds(CLOSES, -1))).toBeNull();
@@ -115,7 +138,7 @@ describe("AnonPollStore", () => {
 			id: "poll2",
 			question: "Yes?",
 			choices: ["Yes", "No"],
-			channelId: "chan",
+
 			closesAt: CLOSES,
 		});
 		store.castVote(POLL, ALICE, 0, CREATED);
@@ -136,10 +159,17 @@ describe("anonymity", () => {
 				id: POLL,
 				question: "Pizza or tacos?",
 				choices: ["Pizza", "Tacos"],
-				channelId: "chan123",
+
 				closesAt: CLOSES,
 			});
-			store.setMessageId(POLL, "msg456");
+			store.setMessage(POLL, {
+				message_id: "msg456",
+				guild_id: "g",
+				channel_id: "chan123",
+				user_id: "bot",
+				timestamp: 1,
+				content: "poll",
+			});
 			store.castVote(POLL, "526907259872083988", 1, CREATED);
 			await db.stop();
 
@@ -169,7 +199,7 @@ describe("anonymity", () => {
 				id: POLL,
 				question: "Q?",
 				choices: ["A", "B"],
-				channelId: "c",
+
 				closesAt: CLOSES,
 			});
 			first.store.castVote(POLL, ALICE, 1, CREATED);

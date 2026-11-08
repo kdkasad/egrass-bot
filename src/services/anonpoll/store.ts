@@ -1,9 +1,8 @@
 import { and, count, eq, lte } from "drizzle-orm";
 
-import { anonPolls, anonPollVoters } from "../../db/schema";
+import { anonPolls, anonPollVoters, messages } from "../../db/schema";
 import type { DatabaseService, Transaction } from "../database";
 import type { PollCipher } from "./cipher";
-import { dateToSqlite } from "../../utils/time";
 
 /**
  * Storage for anonymous polls.
@@ -21,14 +20,8 @@ export class AnonPollStore {
 		return tx.select().from(anonPolls).where(eq(anonPolls.id, id)).get();
 	}
 
-	createPoll(poll: {
-		id: string;
-		question: string;
-		choices: string[];
-		channelId: string;
-		closesAt: Date;
-	}) {
-		const tally = this.#cipher.encryptTally(poll.choices.map((_) => 0));
+	createPoll(poll: { id: string; question: string; choices: string[]; closesAt: Date }) {
+		const tally = this.#cipher.encryptTally(poll.choices.map(() => 0));
 		this.#db.querySync("create anonymous poll", (tx) =>
 			tx
 				.insert(anonPolls)
@@ -37,9 +30,27 @@ export class AnonPollStore {
 		);
 	}
 
-	setMessageId(pollId: string, messageId: string) {
-		this.#db.querySync("set anonymous poll message", (tx) =>
-			tx.update(anonPolls).set({ messageId }).where(eq(anonPolls.id, pollId)).run(),
+	/** Persist the message before linking it, independently of gateway event timing. */
+	setMessage(pollId: string, message: typeof messages.$inferInsert) {
+		this.#db.querySync("set anonymous poll message", (tx) => {
+			tx.insert(messages).values(message).onConflictDoNothing().run();
+			tx.update(anonPolls)
+				.set({ messageId: message.message_id })
+				.where(eq(anonPolls.id, pollId))
+				.run();
+		});
+	}
+
+	getChannelId(pollId: string): string | null {
+		return this.#db.querySync(
+			"get anonymous poll channel",
+			(tx) =>
+				tx
+					.select({ channelId: messages.channel_id })
+					.from(anonPolls)
+					.innerJoin(messages, eq(anonPolls.messageId, messages.message_id))
+					.where(eq(anonPolls.id, pollId))
+					.get()?.channelId ?? null,
 		);
 	}
 
@@ -133,7 +144,6 @@ export class AnonPollStore {
 						id: anonPolls.id,
 						question: anonPolls.question,
 						choices: anonPolls.choices,
-						channelId: anonPolls.channelId,
 						messageId: anonPolls.messageId,
 						closesAt: anonPolls.closesAt,
 						closed: anonPolls.closed,
@@ -162,7 +172,6 @@ export interface PollInfo {
 	id: string;
 	question: string;
 	choices: string[];
-	channelId: string;
 	messageId: string | null;
 	closesAt: Date;
 	closed: boolean;
