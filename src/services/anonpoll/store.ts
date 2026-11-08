@@ -1,6 +1,6 @@
-import { and, count, eq, lte } from "drizzle-orm";
+import { and, asc, count, eq, lte } from "drizzle-orm";
 
-import { anonPolls, anonPollVoters, messages } from "../../db/schema";
+import { anonPolls, anonPollChoices, anonPollVoters, messages } from "../../db/schema";
 import type { DatabaseService, Transaction } from "../database";
 import type { PollCipher } from "./cipher";
 
@@ -20,14 +20,30 @@ export class AnonPollStore {
 		return tx.select().from(anonPolls).where(eq(anonPolls.id, id)).get();
 	}
 
+	#choices(tx: Transaction, pollId: string) {
+		return tx
+			.select({ id: anonPollChoices.choice_id, text: anonPollChoices.text })
+			.from(anonPollChoices)
+			.where(eq(anonPollChoices.poll_id, pollId))
+			.orderBy(asc(anonPollChoices.choice_id))
+			.all();
+	}
+
+	#choicesText(tx: Transaction, pollId: string) {
+		return this.#choices(tx, pollId).map((c) => c.text);
+	}
+
 	createPoll(poll: { id: string; question: string; choices: string[]; closesAt: Date }) {
-		const tally = this.#cipher.encryptTally(poll.choices.map(() => 0));
-		this.#db.querySync("create anonymous poll", (tx) =>
-			tx
-				.insert(anonPolls)
-				.values({ ...poll, tally })
-				.run(),
-		);
+		const { choices, ...info } = poll;
+		const tally = this.#cipher.encryptTally(choices.map(() => 0));
+		this.#db.querySync("create anonymous poll", (tx) => {
+			tx.insert(anonPolls)
+				.values({ ...info, tally })
+				.run();
+			tx.insert(anonPollChoices)
+				.values(choices.map((text, choice_id) => ({ poll_id: poll.id, choice_id, text })))
+				.run();
+		});
 	}
 
 	/** Persist the message before linking it, independently of gateway event timing. */
@@ -61,7 +77,17 @@ export class AnonPollStore {
 			if (!poll) return "no_poll";
 			// Check the deadline even if the close timer has not fired yet.
 			if (poll.closed || poll.closesAt <= now) return "closed";
-			if (choiceIdx >= poll.choices.length) return "bad_choice";
+			const choice = tx
+				.select({ id: anonPollChoices.choice_id })
+				.from(anonPollChoices)
+				.where(
+					and(
+						eq(anonPollChoices.poll_id, pollId),
+						eq(anonPollChoices.choice_id, choiceIdx),
+					),
+				)
+				.get();
+			if (!choice) return "bad_choice";
 			const inserted = tx
 				.insert(anonPollVoters)
 				.values({ poll_id: pollId, voter: this.#cipher.voterId(pollId, userId) })
@@ -106,22 +132,21 @@ export class AnonPollStore {
 
 	/** Atomically close poll, only if its deadline has passed. */
 	closePoll(pollId: string, now: Date): PollInfo | null {
-		return this.#db.querySync(
-			"close anonymous poll",
-			(tx) =>
-				tx
-					.update(anonPolls)
-					.set({ closed: true })
-					.where(
-						and(
-							eq(anonPolls.id, pollId),
-							eq(anonPolls.closed, false),
-							lte(anonPolls.closesAt, now),
-						),
-					)
-					.returning()
-					.get() ?? null,
-		);
+		return this.#db.querySync("close anonymous poll", (tx) => {
+			const poll = tx
+				.update(anonPolls)
+				.set({ closed: true })
+				.where(
+					and(
+						eq(anonPolls.id, pollId),
+						eq(anonPolls.closed, false),
+						lte(anonPolls.closesAt, now),
+					),
+				)
+				.returning()
+				.get();
+			return poll ? { ...poll, choices: this.#choicesText(tx, pollId) } : null;
+		});
 	}
 
 	/** Fetch scheduling data for open polls. */
@@ -136,33 +161,35 @@ export class AnonPollStore {
 	}
 
 	getPoll(id: string): PollInfo | null {
-		return this.#db.querySync(
-			"get anonymous poll",
-			(tx) =>
-				tx
-					.select({
-						id: anonPolls.id,
-						question: anonPolls.question,
-						choices: anonPolls.choices,
-						messageId: anonPolls.messageId,
-						closesAt: anonPolls.closesAt,
-						closed: anonPolls.closed,
-					})
-					.from(anonPolls)
-					.where(eq(anonPolls.id, id))
-					.get() ?? null,
-		);
+		return this.#db.querySync("get anonymous poll", (tx) => {
+			const poll = tx
+				.select({
+					id: anonPolls.id,
+					question: anonPolls.question,
+					messageId: anonPolls.messageId,
+					closesAt: anonPolls.closesAt,
+					closed: anonPolls.closed,
+				})
+				.from(anonPolls)
+				.where(eq(anonPolls.id, id))
+				.get();
+			return poll ? { ...poll, choices: this.#choicesText(tx, id) } : null;
+		});
 	}
 
 	getResults(pollId: string): PollResults | null {
-		const row = this.#db.querySync("get anonymous poll results", (tx) => this.#get(tx, pollId));
-		if (!row) return null;
-		const poll = row;
-		const counts = this.#cipher.decryptTally(row.tally);
-		return {
-			question: poll.question,
-			choices: poll.choices.map((text, i) => ({ text, count: counts[i]! })),
-		};
+		return this.#db.querySync("get anonymous poll results", (tx) => {
+			const poll = this.#get(tx, pollId);
+			if (!poll) return null;
+			const counts = this.#cipher.decryptTally(poll.tally);
+			return {
+				question: poll.question,
+				choices: this.#choices(tx, pollId).map(({ id, text }) => ({
+					text,
+					count: counts[id]!,
+				})),
+			};
+		});
 	}
 }
 

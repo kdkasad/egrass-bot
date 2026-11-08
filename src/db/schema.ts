@@ -234,7 +234,6 @@ export const anonPolls = sqliteTable(
 	{
 		id: text("id").primaryKey().notNull(),
 		question: text("question").notNull(),
-		choices: text("choices", { mode: "json" }).$type<string[]>().notNull(),
 		messageId: text("message_id"),
 		closesAt: integer("closes_at", { mode: "timestamp" }).notNull(),
 		closed: integer("closed", { mode: "boolean" }).notNull().default(false),
@@ -242,6 +241,19 @@ export const anonPolls = sqliteTable(
 		tally: blob("tally", { mode: "buffer" }).notNull(),
 	},
 	(t) => [index("idx_anon_polls_closed_deadline").on(t.closed, t.closesAt)],
+);
+
+/** Public choices, ordered by their zero-based position in the encrypted tally. */
+export const anonPollChoices = sqliteTable(
+	"anon_poll_choices",
+	{
+		poll_id: text("poll_id")
+			.notNull()
+			.references(() => anonPolls.id),
+		choice_id: integer("choice_id").notNull(),
+		text: text("text").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.poll_id, t.choice_id] })],
 );
 
 /**
