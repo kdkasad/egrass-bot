@@ -2,6 +2,7 @@
  * All user-facing text for anonymous polls.
  */
 
+import { dateToSqlite } from "../../utils/time";
 import type { PollInfo, PollResults } from "./store";
 
 /** Width of the results bar chart, in characters */
@@ -47,13 +48,13 @@ export const CreateErrors = {
 /** Private replies to voters and people pressing "View results" */
 export const Replies = {
 	voteRecorded: (poll: PollInfo) =>
-		`Your vote has been recorded anonymously. Results will be available to voters and the poll author <t:${poll.closesAt}:R>.`,
+		`Your vote has been recorded anonymously. Results will be available to voters and the poll author <t:${dateToSqlite(poll.closesAt)}:R>.`,
 	alreadyVoted: "You've already voted in this poll. Votes can't be changed.",
 	badChoice: "That isn't a valid choice.",
 	pollClosed: "This poll has closed.",
 	pollNotFound: "This poll no longer exists.",
 	resultsNotReady: (poll: PollInfo) =>
-		`Results will be available to voters and the poll author <t:${poll.closesAt}:R>.`,
+		`Results will be available to voters and the poll author <t:${dateToSqlite(poll.closesAt)}:R>.`,
 	notVoted: "Only the poll author and people who voted in this poll can see its results.",
 };
 
@@ -61,7 +62,7 @@ export const Replies = {
 export function renderPollMessage(poll: PollInfo, voters: number): string {
 	const status = poll.closed
 		? "-# This poll has closed. Results are available to voters and the poll author in the announcement below."
-		: `-# Votes are anonymous and can't be changed. Closes <t:${poll.closesAt}:R>.`;
+		: `-# Votes are anonymous and can't be changed. Closes <t:${dateToSqlite(poll.closesAt)}:R>.`;
 	return [
 		`📊 **Anonymous poll:** ${poll.question}`,
 		...poll.choices.map((c, i) => `${i + 1}. ${c}`),
