@@ -19,6 +19,7 @@ import type { EnvService } from "../env";
 import type { DiscordService } from "../discord";
 import type { CronService } from "../cron";
 import { MockTimeSource, parseDuration } from "../../utils/time";
+import type { TimerHandler } from "bun";
 
 const databases: DatabaseService[] = [];
 const flushInteractions = () => new Promise<void>((resolve) => setImmediate(resolve));

@@ -9,13 +9,7 @@ export interface QueryWorkerRequest {
 	dbFile: string;
 }
 
-export type QueryWorkerResult =
-	| {
-			status: "error";
-			error: Error;
-			originalErrorName: string;
-	  }
-	| {
-			status: "success";
-			formattedResult: string | null;
-	  };
+export type QueryWorkerError = {
+	name: string;
+	message: string;
+};

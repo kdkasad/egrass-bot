@@ -15,7 +15,7 @@ import type { DatabaseService } from "./database";
 import type { DiscordService } from "./discord";
 import type { EnvService } from "./env";
 import { editMessage, replyToMessage, traced } from "../utils/tracing";
-import { QueryResultFormat, type QueryWorkerRequest, type QueryWorkerResult } from "../types/query";
+import { QueryResultFormat, type QueryWorkerError, type QueryWorkerRequest } from "../types/query";
 import { MAX_MESSAGE_CREATE_REQUEST_SIZE, MAX_MSG_CONTENT_LENGTH } from "../consts";
 import { sql_responses } from "../db/schema";
 
@@ -268,42 +268,37 @@ export class QueryService extends Feature {
 		query: QueryWorkerRequest,
 		timeoutMs: number,
 	): Promise<string | null> {
-		const worker = new Worker(new URL("../workers/query.ts", import.meta.url));
-		Sentry.logger.info("SQL worker spawned");
-		let timer: NodeJS.Timeout | undefined;
-		try {
-			const result = await new Promise<QueryWorkerResult>((resolve, reject) => {
-				timer = setTimeout(() => {
-					Sentry.logger.info("SQL worker timed out");
-					reject(new TimeoutError(timeoutMs));
-				}, timeoutMs);
-				worker.addEventListener("close", () => {
-					Sentry.logger.info("SQL worker exited");
-					reject(new Error("Worker exited prematurely"));
-				});
-				worker.addEventListener("error", (event) => {
-					event.preventDefault();
-					reject(event.error ?? new Error(event.message || "SQL worker failed"));
-				});
-				worker.addEventListener("message", (message) => {
-					Sentry.logger.info("SQL worker sent result message");
-					resolve(message.data as QueryWorkerResult);
-				});
-				// Install handlers before starting the query.
-				worker.postMessage(query);
-			});
-			if (result.status === "success") {
-				return result.formattedResult;
-			} else {
-				// Restore the original error name, since the structured clone
-				// algorithm resets the name of non-built-in errors.
-				const error = result.error;
-				error.name = result.originalErrorName;
-				throw error;
+		const child = Bun.spawn(
+			[process.execPath, "run", import.meta.dir + "/../subprocesses/query.ts"],
+			{
+				timeout: timeoutMs,
+				killSignal: "SIGALRM",
+				stdin: new Blob([JSON.stringify(query)]),
+			},
+		);
+		child.unref();
+		const [, stdout] = await Promise.all([child.exited, child.stdout.text()]);
+		Sentry.logger.info("SQL worker exited", {
+			killed: child.killed,
+			exitCode: child.exitCode,
+			signal: child.signalCode,
+		});
+
+		if (child.signalCode !== null) {
+			if (child.signalCode === "SIGALRM") throw new TimeoutError(timeoutMs);
+			else throw new Error("SQL query worker was killed");
+		} else if (child.exitCode !== 0) {
+			let errorInfo: QueryWorkerError;
+			try {
+				errorInfo = JSON.parse(stdout);
+			} catch {
+				errorInfo = { name: "UnknownError", message: stdout };
 			}
-		} finally {
-			clearTimeout(timer);
-			worker.terminate();
+			const error = new Error(errorInfo.message);
+			error.name = errorInfo.name;
+			throw error;
+		} else {
+			return stdout ? stdout : null;
 		}
 	}
 

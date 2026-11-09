@@ -1,8 +1,8 @@
-import { members } from "../../db/schema";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { QueryResultFormat, type QueryWorkerResult } from "../../types/query";
+import { Database } from "bun:sqlite";
+import { members } from "../../db/schema";
 import type { CronService } from "../cron";
 import { DatabaseService } from "../database";
 import type { EnvService } from "../env";
@@ -33,16 +33,15 @@ async function newStore(file = ":memory:", secret = "secret") {
 	return { db, store: new AnonPollStore(db, new PollCipher(secret)) };
 }
 
-/** Runs `sql` the way the bot runs queries sent by users */
-function runUserQuery(dbFile: string, sql: string): Promise<QueryWorkerResult> {
-	return new Promise((resolve) => {
-		const worker = new Worker(new URL("../../workers/query.ts", import.meta.url));
-		worker.onmessage = (e) => {
-			resolve(e.data);
-			worker.terminate();
-		};
-		worker.postMessage({ sql, format: QueryResultFormat.JSON, dbFile });
+/** Emulate executing a user-provided arbitrary read-only SQL query */
+function runUserQuery(dbFile: string, sql: string): string {
+	const db = new Database(dbFile, {
+		readonly: true,
+		readwrite: false,
 	});
+	const output = JSON.stringify(db.query(sql).all());
+	db.close();
+	return output;
 }
 
 describe("AnonPollStore", () => {
@@ -195,9 +194,7 @@ describe("anonymity", () => {
 				"SELECT *, CAST(tally AS TEXT) FROM anon_polls",
 				"SELECT * FROM anon_poll_voters",
 			]) {
-				const result = await runUserQuery(file, sql);
-				expect(result.status).toBe("success");
-				const output = (result as { formattedResult: string }).formattedResult;
+				const output = runUserQuery(file, sql);
 				expect(output).toContain(POLL);
 				for (const secret of ["526907259872083988"]) {
 					expect(output).not.toContain(secret);
