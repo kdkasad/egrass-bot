@@ -65,16 +65,19 @@ export class TrackingService extends Service {
 				: null;
 		const poll = message.poll;
 		await this.#db.query("insert message", async (tx) => {
-			await tx.insert(messages).values({
-				message_id: message.id,
-				user_id: message.author.id,
-				channel_id: message.channelId,
-				content: poll?.question.text ?? message.content,
-				guild_id: message.guildId,
-				timestamp: Math.floor(message.createdAt.getTime() / 1000),
-				replies_to: repliesTo,
-				is_poll: poll !== null,
-			});
+			await tx
+				.insert(messages)
+				.values({
+					message_id: message.id,
+					user_id: message.author.id,
+					channel_id: message.channelId,
+					content: poll?.question.text ?? message.content,
+					guild_id: message.guildId,
+					timestamp: Math.floor(message.createdAt.getTime() / 1000),
+					replies_to: repliesTo,
+					is_poll: poll !== null,
+				})
+				.onConflictDoNothing();
 			if (poll && poll.answers.size > 0) {
 				await tx.insert(pollChoices).values(
 					poll.answers.map((answer) => ({

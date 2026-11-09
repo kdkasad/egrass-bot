@@ -7,6 +7,8 @@ describe("duration parsing", () => {
 		["1h", 3600000],
 		["1m 16s", 76000],
 		["16.7 s", 16700],
+		["1w", 604800000],
+		["2 weeks 1d", 1296000000],
 	];
 	for (const [str, expected] of cases) {
 		test(str, () => {

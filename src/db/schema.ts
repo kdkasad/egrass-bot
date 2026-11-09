@@ -1,5 +1,6 @@
 import { eq, getTableColumns } from "drizzle-orm";
 import {
+	blob,
 	foreignKey,
 	index,
 	integer,
@@ -225,4 +226,50 @@ export const bountyClaims = sqliteTable(
 		resolved_at: integer("resolved_at"),
 	},
 	(t) => [index("idx_bounty_claims_bounty_id_status").on(t.bounty_id, t.status)],
+);
+
+/** Public poll metadata; tallies and voter identities are protected separately. */
+export const anonPolls = sqliteTable(
+	"anon_polls",
+	{
+		id: text("id").primaryKey().notNull(),
+		authorUserId: text("user_id")
+			.notNull()
+			.references(() => members.user_id),
+		question: text("question").notNull(),
+		messageId: text("message_id"),
+		closesAt: integer("closes_at", { mode: "timestamp" }).notNull(),
+		closed: integer("closed", { mode: "boolean" }).notNull().default(false),
+		/** Fixed-length encrypted counters hide counts and which choice changed. */
+		tally: blob("tally", { mode: "buffer" }).notNull(),
+	},
+	(t) => [index("idx_anon_polls_closed_deadline").on(t.closed, t.closesAt)],
+);
+
+/** Public choices, ordered by their zero-based position in the encrypted tally. */
+export const anonPollChoices = sqliteTable(
+	"anon_poll_choices",
+	{
+		poll_id: text("poll_id")
+			.notNull()
+			.references(() => anonPolls.id),
+		choice_id: integer("choice_id").notNull(),
+		text: text("text").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.poll_id, t.choice_id] })],
+);
+
+/**
+ * Who has voted in each anonymous poll, as a keyed hash of the poll and user
+ * IDs, so voters can't be identified or linked across polls without the key.
+ */
+export const anonPollVoters = sqliteTable(
+	"anon_poll_voters",
+	{
+		poll_id: text("poll_id")
+			.notNull()
+			.references(() => anonPolls.id),
+		voter: text("voter").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.poll_id, t.voter] })],
 );

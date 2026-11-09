@@ -15,3 +15,4 @@ export { ExchangeService } from "./exchange";
 export { PsetService } from "./pset";
 export { BountyService } from "./bounty";
 export { IQService } from "./iq";
+export { AnonPollService } from "./anonpoll";
