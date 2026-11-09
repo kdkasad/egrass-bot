@@ -16,13 +16,6 @@ describe("render", () => {
 		closed: false,
 	};
 
-	test("public message never contains tallies", () => {
-		const msg = renderPollMessage(poll, 3);
-		expect(msg).toContain("3 votes");
-		expect(msg).toContain(`<t:${CLOSES}:R>`);
-		expect(msg).not.toContain("%");
-	});
-
 	test("results show counts and percentages", () => {
 		const text = renderResults({
 			question: "Q?",

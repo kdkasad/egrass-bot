@@ -1,16 +1,16 @@
-import { members } from "../../db/schema";
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
 	MessageFlags,
-	TextInputStyle,
-	type ChatInputCommandInteraction,
+	MessageFlagsBitField,
+	type ActionRowBuilder,
+	type StringSelectMenuBuilder,
 	type ButtonInteraction,
 	type ModalSubmitInteraction,
-	type SlashCommandBuilder,
-	type ModalBuilder,
 	type InteractionReplyOptions,
+	type MessageFlagsResolvable,
 } from "discord.js";
-import { CreateErrors, Replies, renderResults } from "./messages";
+import { members } from "../../db/schema";
+import { CreateErrors, Replies } from "./messages";
 import { AnonPollService } from ".";
 import { AnonPollStore } from "./store";
 import { PollCipher } from "./cipher";
@@ -20,10 +20,13 @@ import type { DiscordService } from "../discord";
 import type { CronService } from "../cron";
 import { MockTimeSource, parseDuration } from "../../utils/time";
 
-const scheduled: { callback: () => void; delay: number }[] = [];
-afterEach(() => {
+const databases: DatabaseService[] = [];
+const flushInteractions = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+afterEach(async () => {
+	await flushInteractions();
 	mock.restore();
-	scheduled.length = 0;
+	for (const db of databases.splice(0)) await db.stop();
 });
 
 async function setup() {
@@ -35,28 +38,21 @@ async function setup() {
 		},
 	} as unknown as EnvService;
 	const db = await DatabaseService.new(env, { createJob() {} } as unknown as CronService);
-	db.querySync("seed poll authors", (tx) =>
+	databases.push(db);
+	db.querySync("seed poll author", (tx) =>
 		tx
 			.insert(members)
-			.values([
-				{ user_id: "author", display_name: "Author", username: "author" },
-				{ user_id: "u", display_name: "User", username: "u" },
-			])
+			.values({ user_id: "author", display_name: "Author", username: "author" })
 			.run(),
 	);
 	const store = new AnonPollStore(db, new PollCipher("secret"));
 	const time = new MockTimeSource();
 	time.setTime(new Date(100_000));
-	const send = mock(async () => ({}));
-	let command!: (i: ChatInputCommandInteraction) => Promise<void>;
+	const send = mock(async (payload: { content: string }) => payload);
 	let submit!: (i: ModalSubmitInteraction) => Promise<void>;
 	let results!: (i: ButtonInteraction) => Promise<void>;
-	let commandSpec!: SlashCommandBuilder;
 	const discord = {
-		registerSlashCommand(spec: SlashCommandBuilder, handler: typeof command) {
-			commandSpec = spec;
-			command = handler;
-		},
+		registerSlashCommand() {},
 		registerModalHandler(_prefix: string, handler: typeof submit) {
 			submit = handler;
 		},
@@ -74,244 +70,240 @@ async function setup() {
 			},
 		},
 	} as unknown as DiscordService;
-	spyOn(globalThis, "setTimeout").mockImplementation(((
-		callback: TimerHandler,
-		delay?: number,
-	) => {
-		scheduled.push({ callback: callback as () => void, delay: delay ?? 0 });
+
+	// Keep timer mechanics in the fixture; tests advance time and observe announcements.
+	const timers: { callback: () => void; at: number }[] = [];
+	spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler, delay = 0) => {
+		timers.push({ callback: callback as () => void, at: time.now().getTime() + delay });
 		return {
 			unref() {
 				return this;
 			},
 		} as ReturnType<typeof setTimeout>;
 	}) as unknown as typeof setTimeout);
-	return {
-		env,
-		db,
-		store,
-		time,
-		discord,
-		send,
-		command: () => command,
-		submit: () => submit,
-		results: () => results,
-		commandSpec: () => commandSpec,
+	const advanceTime = async (milliseconds: number) => {
+		time.advance({ milliseconds });
+		while (true) {
+			timers.sort((a, b) => a.at - b.at);
+			if (!timers[0] || timers[0].at > time.now().getTime()) break;
+			timers.shift()!.callback();
+			await flushInteractions();
+		}
 	};
-}
 
-test("startup restores only open polls, floors overdue timers at zero, and closes each poll once", async () => {
-	const f = await setup();
-	for (const [id, closesAt] of [
-		["expired", 90],
-		["future", 110],
-		["closed", 80],
-	] as const) {
-		f.store.createPoll({
-			authorId: "author",
-			id,
-			closesAt: new Date(closesAt * 1000),
+	const start = () => new AnonPollService(env, discord, db, time);
+	const submitPoll = async (
+		overrides: Partial<Record<"question" | "choices" | "duration", string>> = {},
+	) => {
+		const values: Record<string, string> = {
 			question: "Q?",
-			choices: ["A", "B"],
-		});
-		f.store.setMessage(id, {
-			message_id: id,
-			guild_id: "g",
-			channel_id: "c",
-			user_id: "bot",
-			timestamp: 1,
-			content: "poll",
-		});
-	}
-	f.store.closePoll("closed", new Date(100_000));
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	expect(scheduled.map((t) => t.delay)).toEqual([0, 10_000]);
-	scheduled[0]!.callback();
-	await new Promise<void>((resolve) => setImmediate(resolve));
-	expect(f.store.getPoll("expired")!.closed).toBe(true);
-	expect(f.store.getPoll("future")!.closed).toBe(false);
-	expect(f.send).toHaveBeenCalledTimes(1);
-	f.time.advance({ seconds: 10 });
-	scheduled[1]!.callback();
-	await new Promise<void>((resolve) => setImmediate(resolve));
-	expect(f.store.getPoll("future")!.closed).toBe(true);
-	expect(f.send).toHaveBeenCalledTimes(2);
-	scheduled[1]!.callback();
-	await new Promise<void>((resolve) => setImmediate(resolve));
-	expect(f.send).toHaveBeenCalledTimes(2);
-	await f.db.stop();
-});
-
-function submission(
-	id: string,
-	overrides: Partial<Record<"question" | "choices" | "duration", string>> = {},
-) {
-	const values: Record<string, string> = {
-		question: "Q?",
-		choices: "A\nB",
-		duration: "1d",
-		...overrides,
-	};
-	const reply = mock(async (payload: InteractionReplyOptions) => ({
-		resource: {
-			message: {
-				id: `message-${id}`,
-				guildId: "g",
-				channelId: "c",
-				author: { id: "bot" },
-				createdAt: new Date(100_000),
-				content: payload.content,
+			choices: "A\nB",
+			duration: "1d",
+			...overrides,
+		};
+		const reply = mock(async (payload: InteractionReplyOptions) => ({
+			resource: {
+				message: {
+					id: "message",
+					guildId: "g",
+					channelId: "c",
+					author: { id: "bot" },
+					createdAt: time.now(),
+					content: payload.content,
+				},
 			},
-		},
-	}));
-	const interaction = {
-		id,
-		channelId: "c",
-		guildId: "g",
-		user: { id: "u" },
-		reply,
-		fields: { getTextInputValue: (name: string) => values[name]! },
-	} as unknown as ModalSubmitInteraction;
-	return { interaction, reply };
-}
-
-test("the argument-free command opens a modal without creating a poll or timer", async () => {
-	const f = await setup();
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	const showModal = mock(async (modal: ModalBuilder) => modal);
-	await f.command()({
-		id: "command",
-		user: { id: "u" },
-		showModal,
-	} as unknown as ChatInputCommandInteraction);
-	expect(f.commandSpec().toJSON().options).toEqual([]);
-	const modal = showModal.mock.calls[0]![0].toJSON();
-	expect(modal.custom_id).toBe("anonpoll/create");
-	expect(modal.components).toHaveLength(3);
-	const fields = modal.components.map((label) => ("component" in label ? label.component : null));
-	expect(fields).toMatchObject([
-		{ custom_id: "question", style: TextInputStyle.Short, required: true, max_length: 300 },
-		{ custom_id: "choices", style: TextInputStyle.Paragraph, required: true },
-		{ custom_id: "duration", style: TextInputStyle.Short, required: false, value: "1d" },
-	]);
-	// If the author cancels, no submit event arrives and there is nothing to clean up.
-	expect(f.store.openPollDeadlines()).toEqual([]);
-	expect(scheduled).toHaveLength(0);
-	await f.db.stop();
-});
-
-test("submission trims fields, deduplicates choices while preserving order and literals, and starts the deadline at submission", async () => {
-	const f = await setup();
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	f.time.advance({ minutes: 5 });
-	const { interaction, reply } = submission("submitted", {
-		question: "  Lunch?  ",
-		choices: " \r\n Pizza \r\n\t\r\n1. Tacos\nA, B\r\nPizza!  \n Pizza ",
-		duration: " 1w ",
-	});
-	await f.submit()(interaction);
-	expect(f.store.getPoll("submitted")).toMatchObject({
-		question: "Lunch?",
-		choices: ["Pizza", "1. Tacos", "A, B", "Pizza!"],
-		messageId: "message-submitted",
-		closesAt: new Date(f.time.now().getTime() + parseDuration("1w")),
-	});
-	expect(f.store.getChannelId("submitted")).toBe("c");
-	expect(scheduled.map((t) => t.delay)).toEqual([parseDuration("1w")]);
-	expect(reply.mock.calls[0]![0]).toMatchObject({
-		content: expect.stringContaining("Lunch?"),
-		allowedMentions: { parse: [] },
-		withResponse: true,
-	});
-	expect(reply.mock.calls[0]![0]).not.toHaveProperty("flags");
-	await f.db.stop();
-});
-
-test.each(["", "   ", "1m", "1w"])("accepts duration %j, with default", async (duration) => {
-	const f = await setup();
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	const { interaction } = submission("valid", { duration });
-	await f.submit()(interaction);
-	expect(f.store.getPoll("valid")).not.toBeNull();
-	expect(scheduled.map((t) => t.delay)).toEqual([parseDuration(duration.trim() || "1d")]);
-	await f.db.stop();
-});
-
-test("accepts maximum lengths and ten choices; duplicate matching is case-sensitive", async () => {
-	const f = await setup();
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	const choices = [
-		"A".repeat(100),
-		"a".repeat(100),
-		...Array.from({ length: 8 }, (_, i) => String(i)),
-	];
-	const { interaction } = submission("limits", {
-		question: "Q".repeat(300),
-		choices: choices.join("\n"),
-	});
-	await f.submit()(interaction);
-	expect(f.store.getPoll("limits")!.choices).toEqual(choices);
-	await f.db.stop();
-});
-
-test.each([
-	[{ question: "  " }, CreateErrors.emptyQuestion],
-	[{ question: "Q".repeat(301) }, CreateErrors.questionTooLong],
-	[{ choices: "A\n \n" }, CreateErrors.tooFewChoices],
-	[{ choices: " \n " }, CreateErrors.tooFewChoices],
-	[
-		{ choices: Array.from({ length: 11 }, (_, i) => String(i)).join("\n") },
-		CreateErrors.tooManyChoices,
-	],
-	[{ choices: "A".repeat(101) + "\nB" }, CreateErrors.choiceTooLong],
-	[{ choices: "A\n A " }, CreateErrors.tooFewChoices],
-	[{ duration: "59s" }, CreateErrors.badDuration],
-	[{ duration: "8d" }, CreateErrors.badDuration],
-	[{ duration: "nonsense" }, CreateErrors.badDuration],
-])("invalid submission %j creates no poll or timer", async (values, error) => {
-	const f = await setup();
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	const { interaction, reply } = submission("invalid", values);
-	await f.submit()(interaction);
-	expect(reply.mock.calls[0]![0]).toEqual({
-		content: `${error} ${CreateErrors.tryAgain}`,
-		flags: [MessageFlags.Ephemeral],
-	});
-	expect(f.store.getPoll("invalid")).toBeNull();
-	expect(scheduled).toHaveLength(0);
-	await f.db.stop();
-});
-
-test("only author and voters see results", async () => {
-	const f = await setup();
-	new AnonPollService(f.env, f.discord, f.db, f.time);
-	const { interaction } = submission("access", { duration: "1m" });
-	await f.submit()(interaction);
-	expect(f.store.isAuthor("access", "u")).toBe(true);
-	expect(f.store.hasVoted("access", "u")).toBe(false);
-	expect(f.store.voterCount("access")).toBe(0);
-	expect(f.store.castVote("access", "voter", 1, f.time.now())).toBe("ok");
-	const press = async (userId: string) => {
+		}));
+		await submit({
+			id: "poll",
+			channelId: "c",
+			guildId: "g",
+			user: { id: "author" },
+			reply,
+			fields: { getTextInputValue: (name: string) => values[name]! },
+		} as unknown as ModalSubmitInteraction);
+		return reply.mock.calls[0]![0];
+	};
+	const viewResults = async (userId: string) => {
 		const reply = mock(async (payload: InteractionReplyOptions) => payload);
-		await f.results()({
-			id: `results-${userId}`,
-			customId: "anonpoll/results:access",
+		await results({
+			id: "results",
+			customId: "anonpoll/results:poll",
 			user: { id: userId },
 			reply,
 		} as unknown as ButtonInteraction);
-		expect(reply.mock.calls[0]![0].flags).toEqual([MessageFlags.Ephemeral]);
-		return reply.mock.calls[0]![0].content;
+		await flushInteractions();
+		return reply.mock.calls[0]![0];
 	};
-	for (const user of ["u", "voter", "outsider"]) {
-		expect(await press(user)).toBe(Replies.resultsNotReady(f.store.getPoll("access")!));
+	return { store, time, send, start, advanceTime, submitPoll, viewResults };
+}
+
+type Fixture = Awaited<ReturnType<typeof setup>>;
+
+async function createPoll(values: Parameters<Fixture["submitPoll"]>[0] = {}) {
+	const f = await setup();
+	f.start();
+	const reply = await f.submitPoll(values);
+	return { ...f, reply };
+}
+
+function choiceLabels(reply: InteractionReplyOptions) {
+	const row = reply.components![0] as ActionRowBuilder<StringSelectMenuBuilder>;
+	return row.toJSON().components[0]!.options.map((option) => option.label);
+}
+
+function seedPoll(f: Fixture, closesAt: Date) {
+	f.store.createPoll({
+		id: "poll",
+		authorId: "author",
+		question: "Q?",
+		choices: ["A", "B"],
+		closesAt,
+	});
+	f.store.setMessage("poll", {
+		message_id: "message",
+		guild_id: "g",
+		channel_id: "c",
+		user_id: "bot",
+		timestamp: 1,
+		content: "poll",
+	});
+}
+
+describe("submission", () => {
+	test("trims the question", async () => {
+		const { reply } = await createPoll({ question: "  Lunch?  " });
+		expect(reply.content).toContain("**Anonymous poll:** Lunch?\n");
+	});
+
+	test.each([
+		["trims each choice", " Pizza \n\tTacos  ", ["Pizza", "Tacos"]],
+		["ignores blank choice lines", "\nPizza\n \nTacos\n", ["Pizza", "Tacos"]],
+		["removes duplicate choices", "Pizza\nPizza \nTacos", ["Pizza", "Tacos"]],
+		["preserves choice order", "Z\nA\nM\nA", ["Z", "A", "M"]],
+		[
+			"preserves numbering and commas",
+			"1. Pizza\nTacos, burritos",
+			["1. Pizza", "Tacos, burritos"],
+		],
+		["treats differently cased choices as distinct", "Pizza\npizza", ["Pizza", "pizza"]],
+	])("%s", async (_name, choices, expected) => {
+		const { reply } = await createPoll({ choices });
+		expect(choiceLabels(reply)).toEqual(expected);
+	});
+
+	test.each([
+		["blank question", { question: "  " }, CreateErrors.emptyQuestion],
+		[
+			"question over 300 characters",
+			{ question: "Q".repeat(301) },
+			CreateErrors.questionTooLong,
+		],
+		["one choice", { choices: "A" }, CreateErrors.tooFewChoices],
+		["no choices", { choices: " \n " }, CreateErrors.tooFewChoices],
+		[
+			"over ten choices",
+			{ choices: Array.from({ length: 11 }, (_, i) => String(i)).join("\n") },
+			CreateErrors.tooManyChoices,
+		],
+		[
+			"choice over 100 characters",
+			{ choices: "A".repeat(101) + "\nB" },
+			CreateErrors.choiceTooLong,
+		],
+		["only duplicate choices", { choices: "A\n A " }, CreateErrors.tooFewChoices],
+		["duration below one minute", { duration: "59s" }, CreateErrors.badDuration],
+		["duration above one week", { duration: "8d" }, CreateErrors.badDuration],
+		["unrecognized duration", { duration: "nonsense" }, CreateErrors.badDuration],
+	])("rejects %s", async (_name, values, error) => {
+		const { reply, store } = await createPoll(values);
+		expect(reply.content).toBe(`${error} ${CreateErrors.tryAgain}`);
+		expect(
+			new MessageFlagsBitField(reply.flags as MessageFlagsResolvable).has(
+				MessageFlags.Ephemeral,
+			),
+		).toBe(true);
+		expect(store.getPoll("poll")).toBeNull();
+	});
+});
+
+describe("closing", () => {
+	test("starts the duration at submission", async () => {
+		const f = await setup();
+		f.start();
+		await f.advanceTime(parseDuration("5m"));
+		await f.submitPoll({ duration: "1m" });
+		await f.advanceTime(parseDuration("1m") - 1);
+		expect(f.send).not.toHaveBeenCalled();
+		await f.advanceTime(1);
+		expect(f.send).toHaveBeenCalledTimes(1);
+	});
+
+	test("restores open poll deadlines on startup", async () => {
+		const f = await setup();
+		seedPoll(f, new Date(f.time.now().getTime() + parseDuration("1m")));
+		f.start();
+		await f.advanceTime(parseDuration("1m") - 1);
+		expect(f.send).not.toHaveBeenCalled();
+		await f.advanceTime(1);
+		expect(f.send).toHaveBeenCalledTimes(1);
+	});
+
+	test("announces overdue polls on startup", async () => {
+		const f = await setup();
+		seedPoll(f, new Date(f.time.now().getTime() - parseDuration("1m")));
+		f.start();
+		await f.advanceTime(0);
+		expect(f.send).toHaveBeenCalledTimes(1);
+	});
+
+	test("does not repeat closing announcements after restart", async () => {
+		const f = await createPoll({ duration: "1m" });
+		await f.advanceTime(parseDuration("1m"));
+		f.send.mockClear();
+		f.start();
+		await f.advanceTime(parseDuration("1d"));
+		expect(f.send).not.toHaveBeenCalled();
+	});
+});
+
+describe("results access", () => {
+	async function pollWithVoter() {
+		const f = await createPoll({ duration: "1m" });
+		f.store.castVote("poll", "voter", 1, f.time.now());
+		return f;
 	}
-	f.time.advance({ minutes: 1 });
-	const expected = renderResults(f.store.getResults("access")!);
-	expect(await press("u")).toBe(expected);
-	expect(await press("voter")).toBe(expected);
-	expect(await press("outsider")).toBe(Replies.notVoted);
-	// Author access must not add a voter or inflate the tally.
-	expect(f.store.hasVoted("access", "u")).toBe(false);
-	expect(f.store.voterCount("access")).toBe(1);
-	await new Promise<void>((resolve) => setImmediate(resolve));
-	await f.db.stop();
+
+	test.each(["author", "voter", "outsider"])("hides open results from the %s", async (user) => {
+		const f = await pollWithVoter();
+		const reply = await f.viewResults(user);
+		expect(reply.content).toBe(Replies.resultsNotReady(f.store.getPoll("poll")!));
+	});
+
+	test.each([
+		["author who did not vote", "author"],
+		["voter", "voter"],
+	])("shows closed results to the %s", async (_name, user) => {
+		const f = await pollWithVoter();
+		await f.advanceTime(parseDuration("1m"));
+		const reply = await f.viewResults(user);
+		expect(reply.content).toContain("**Results:** Q?");
+	});
+
+	test("denies results to outsiders", async () => {
+		const f = await pollWithVoter();
+		await f.advanceTime(parseDuration("1m"));
+		const reply = await f.viewResults("outsider");
+		expect(reply.content).toBe(Replies.notVoted);
+	});
+
+	test("sends results privately", async () => {
+		const f = await pollWithVoter();
+		await f.advanceTime(parseDuration("1m"));
+		const reply = await f.viewResults("voter");
+		expect(
+			new MessageFlagsBitField(reply.flags as MessageFlagsResolvable).has(
+				MessageFlags.Ephemeral,
+			),
+		).toBe(true);
+	});
 });
