@@ -327,14 +327,14 @@ export class AnonPollService extends Feature {
 			const channel = await this.#discord.client.channels.fetch(channelId);
 			if (!channel?.isSendable()) throw new Error("Poll channel is not sendable");
 			if (poll.messageId) {
-				// Remove the vote dropdown; results are reached from the announcement.
+				// Replace the vote dropdown with a results button.
 				// The poll message may have been deleted, which shouldn't stop the
 				// announcement.
 				try {
 					const message = await channel.messages.fetch(poll.messageId);
 					await message.edit({
 						content: renderPollMessage(poll, voters),
-						components: [],
+						components: [AnonPollService.#resultsRow(poll.id)],
 						allowedMentions: { parse: [] },
 					});
 				} catch (e) {
