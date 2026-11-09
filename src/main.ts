@@ -14,7 +14,6 @@ import {
 	HTTPService,
 	MinecraftService,
 	ExchangeService,
-	PsetService,
 	BountyService,
 	IQService,
 	AnonPollService,
@@ -61,7 +60,6 @@ async function main() {
 	const minecraft = new MinecraftService(env, discord, database);
 	const exchange = new ExchangeService(env, discord, database, tracking);
 	const signalHandler = new SignalHandlerService(discord, database, http);
-	const pset = new PsetService(env, discord, database);
 	const bounty = new BountyService(env, discord, database, cron);
 	const iq = new IQService(env, discord);
 	const anonPoll = new AnonPollService(env, discord, database);
@@ -75,7 +73,6 @@ async function main() {
 		troll,
 		minecraft,
 		exchange,
-		pset,
 		bounty,
 		iq,
 		anonPoll);
