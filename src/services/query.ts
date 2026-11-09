@@ -312,12 +312,9 @@ export class QueryService extends Feature {
 		if (message.author.id == message.client.user.id) return false;
 
 		// Only consider messages in DMs or which mention the bot
-		if (
-			!(
-				message.channel.isDMBased() ||
-				message.mentions.parsedUsers.has(message.client.user.id)
-			)
-		) {
+		if (!(
+			message.channel.isDMBased() || message.mentions.parsedUsers.has(message.client.user.id)
+		)) {
 			return false;
 		}
 
