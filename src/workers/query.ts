@@ -6,23 +6,29 @@ import stringWidth from "string-width";
 
 declare const self: Worker;
 
-// Wait for initial message with list of bot user IDs
+// Execute one query per worker.
 self.addEventListener(
 	"message",
-	(event) => {
+	async (event) => {
 		const { sql, format, dbFile } = event.data as QueryWorkerRequest;
-		const rodb = new Database(dbFile, { readonly: true, readwrite: false });
-		rodb.run("PRAGMA query_only = 1;");
 		try {
-			const query = rodb.prepare<Record<string, unknown>, []>(sql);
-			const results = query.all();
-			(async () => {
-				self.postMessage({
-					status: "success",
-					formattedResult:
-						results.length === 0 ? null : await formatResults(results, format),
-				} satisfies QueryWorkerResult);
-			})();
+			const rodb = new Database(dbFile, { readonly: true, readwrite: false });
+			let results: Record<string, unknown>[];
+			try {
+				rodb.run("PRAGMA query_only = 1;");
+				const query = rodb.prepare<Record<string, unknown>, []>(sql);
+				try {
+					results = query.all();
+				} finally {
+					query.finalize();
+				}
+			} finally {
+				rodb.close();
+			}
+			self.postMessage({
+				status: "success",
+				formattedResult: results.length === 0 ? null : await formatResults(results, format),
+			} satisfies QueryWorkerResult);
 		} catch (thrown) {
 			const error = thrown instanceof Error ? thrown : new Error(String(thrown));
 			self.postMessage({

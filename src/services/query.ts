@@ -270,37 +270,40 @@ export class QueryService extends Feature {
 	): Promise<string | null> {
 		const worker = new Worker(new URL("../workers/query.ts", import.meta.url));
 		Sentry.logger.info("SQL worker spawned");
-		// Send query to worker
-		worker.postMessage(query satisfies QueryWorkerRequest);
-		const result = await new Promise<QueryWorkerResult>((resolve, reject) => {
-			// Kill worker and reject promise after timeout elapses
-			const timer = setTimeout(() => {
-				Sentry.logger.info("SQL worker timed out");
-				worker.terminate();
-				reject(new TimeoutError(timeoutMs));
-			}, timeoutMs);
-
-			// Handle early worker exit
-			worker.addEventListener("close", () => {
-				Sentry.logger.info("SQL worker exited");
-				reject(new Error("Worker exited prematurely"));
+		let timer: NodeJS.Timeout | undefined;
+		try {
+			const result = await new Promise<QueryWorkerResult>((resolve, reject) => {
+				timer = setTimeout(() => {
+					Sentry.logger.info("SQL worker timed out");
+					reject(new TimeoutError(timeoutMs));
+				}, timeoutMs);
+				worker.addEventListener("close", () => {
+					Sentry.logger.info("SQL worker exited");
+					reject(new Error("Worker exited prematurely"));
+				});
+				worker.addEventListener("error", (event) => {
+					event.preventDefault();
+					reject(event.error ?? new Error(event.message || "SQL worker failed"));
+				});
+				worker.addEventListener("message", (message) => {
+					Sentry.logger.info("SQL worker sent result message");
+					resolve(message.data as QueryWorkerResult);
+				});
+				// Install handlers before starting the query.
+				worker.postMessage(query);
 			});
-
-			// Handle worker completion message
-			worker.addEventListener("message", (message) => {
-				Sentry.logger.info("SQL worker sent result message");
-				clearTimeout(timer);
-				resolve(message.data as QueryWorkerResult);
-			});
-		});
-		if (result.status === "success") {
-			return result.formattedResult;
-		} else {
-			// Restore the original error name, since the structured clone
-			// algorithm resets the name of non-built-in errors.
-			const error = result.error;
-			error.name = result.originalErrorName;
-			throw error;
+			if (result.status === "success") {
+				return result.formattedResult;
+			} else {
+				// Restore the original error name, since the structured clone
+				// algorithm resets the name of non-built-in errors.
+				const error = result.error;
+				error.name = result.originalErrorName;
+				throw error;
+			}
+		} finally {
+			clearTimeout(timer);
+			worker.terminate();
 		}
 	}
 
