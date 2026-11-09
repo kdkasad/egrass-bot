@@ -32,7 +32,7 @@ export const ComponentText = {
 	viewResults: "View results",
 };
 
-/** Errors shown (privately) to the poll creator when the creation form is invalid */
+/** Errors shown (privately) to the poll author when the creation form is invalid */
 export const CreateErrors = {
 	tryAgain: "Run /anon-poll again to re-enter your poll.",
 	questionTooLong: "The question must be at most 300 characters.",
@@ -47,20 +47,20 @@ export const CreateErrors = {
 /** Private replies to voters and people pressing "View results" */
 export const Replies = {
 	voteRecorded: (poll: PollInfo) =>
-		`Your vote has been recorded anonymously. Results will be available to voters <t:${poll.closesAt}:R>.`,
+		`Your vote has been recorded anonymously. Results will be available to voters and the poll author <t:${poll.closesAt}:R>.`,
 	alreadyVoted: "You've already voted in this poll. Votes can't be changed.",
 	badChoice: "That isn't a valid choice.",
 	pollClosed: "This poll has closed.",
 	pollNotFound: "This poll no longer exists.",
 	resultsNotReady: (poll: PollInfo) =>
-		`Results will be available to voters <t:${poll.closesAt}:R>.`,
-	notVoted: "Only people who voted in this poll can see its results.",
+		`Results will be available to voters and the poll author <t:${poll.closesAt}:R>.`,
+	notVoted: "Only the poll author and people who voted in this poll can see its results.",
 };
 
 /** The public poll message. Never shows tallies, only the number of voters. */
 export function renderPollMessage(poll: PollInfo, voters: number): string {
 	const status = poll.closed
-		? "-# This poll has closed. Results are available to voters in the announcement below."
+		? "-# This poll has closed. Results are available to voters and the poll author in the announcement below."
 		: `-# Votes are anonymous and can't be changed. Closes <t:${poll.closesAt}:R>.`;
 	return [
 		`📊 **Anonymous poll:** ${poll.question}`,
@@ -73,10 +73,10 @@ export function renderPollMessage(poll: PollInfo, voters: number): string {
 
 /** Posted in the poll's channel, with the "View results" button, when it closes */
 export function renderClosedAnnouncement(poll: PollInfo, voters: number): string {
-	return `📊 The anonymous poll **${poll.question}** has closed with ${plural(voters, "vote")}. Results are now available to everyone who voted.`;
+	return `📊 The anonymous poll **${poll.question}** has closed with ${plural(voters, "vote")}. Results are now available to the poll author and everyone who voted.`;
 }
 
-/** Results, shown privately to someone who voted, once the poll has closed */
+/** Results, shown privately to the author or someone who voted, once the poll has closed */
 export function renderResults(results: PollResults): string {
 	const total = results.choices.reduce((sum, c) => sum + c.count, 0);
 	const lines = results.choices.map(({ text, count }) => {

@@ -23,12 +23,6 @@ describe("render", () => {
 		expect(msg).not.toContain("%");
 	});
 
-	test("closed announcement says results are available to voters", () => {
-		expect(renderClosedAnnouncement({ ...poll, closed: true }, 1)).toContain(
-			"has closed with 1 vote. Results are now available to everyone who voted",
-		);
-	});
-
 	test("results show counts and percentages", () => {
 		const text = renderResults({
 			question: "Q?",

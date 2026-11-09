@@ -33,12 +33,18 @@ export class AnonPollStore {
 		return this.#choices(tx, pollId).map((c) => c.text);
 	}
 
-	createPoll(poll: { id: string; question: string; choices: string[]; closesAt: Date }) {
-		const { choices, ...info } = poll;
+	createPoll(poll: {
+		id: string;
+		authorId: string;
+		question: string;
+		choices: string[];
+		closesAt: Date;
+	}) {
+		const { choices, authorId, ...info } = poll;
 		const tally = this.#cipher.encryptTally(choices.map(() => 0));
 		this.#db.querySync("create anonymous poll", (tx) => {
 			tx.insert(anonPolls)
-				.values({ ...info, tally })
+				.values({ ...info, authorUserId: authorId, tally })
 				.run();
 			tx.insert(anonPollChoices)
 				.values(choices.map((text, choice_id) => ({ poll_id: poll.id, choice_id, text })))
@@ -103,6 +109,18 @@ export class AnonPollStore {
 				.run();
 			return "ok";
 		});
+	}
+
+	isAuthor(pollId: string, userId: string): boolean {
+		return this.#db.querySync(
+			"check anonymous poll author",
+			(tx) =>
+				tx
+					.select({ id: anonPolls.id })
+					.from(anonPolls)
+					.where(and(eq(anonPolls.id, pollId), eq(anonPolls.authorUserId, userId)))
+					.get() !== undefined,
+		);
 	}
 
 	hasVoted(pollId: string, userId: string): boolean {

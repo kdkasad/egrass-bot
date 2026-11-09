@@ -56,6 +56,13 @@ export class PollCipher {
 		return counts;
 	}
 
+	/** Separate from voter hashes so the author's voting status is not exposed. */
+	authorId(pollId: string, userId: string): string {
+		return createHmac("sha256", this.#macKey)
+			.update(`author:${pollId}:${userId}`)
+			.digest("hex");
+	}
+
 	/** Stands in for a user ID in one poll; differs between polls for the same user */
 	voterId(pollId: string, userId: string): string {
 		return createHmac("sha256", this.#macKey).update(`${pollId}:${userId}`).digest("hex");

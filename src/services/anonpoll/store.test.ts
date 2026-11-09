@@ -1,4 +1,4 @@
-import { anonPollChoices } from "../../db/schema";
+import { members } from "../../db/schema";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +23,13 @@ async function newStore(file = ":memory:", secret = "secret") {
 	const env = { vars: { DATABASE_FILE: file, ANONPOLL_SECRET: secret } } as unknown as EnvService;
 	const cron = { createJob() {} } as unknown as CronService;
 	const db = await DatabaseService.new(env, cron);
+	db.querySync("seed poll author", (tx) =>
+		tx
+			.insert(members)
+			.values({ user_id: "author", display_name: "Author", username: "author" })
+			.onConflictDoNothing()
+			.run(),
+	);
 	return { db, store: new AnonPollStore(db, new PollCipher(secret)) };
 }
 
@@ -43,6 +50,7 @@ describe("AnonPollStore", () => {
 	beforeEach(async () => {
 		({ store } = await newStore());
 		store.createPoll({
+			authorId: "author",
 			id: POLL,
 			question: "Pizza or tacos?",
 			choices: ["Pizza", "Tacos", "Neither"],
@@ -86,7 +94,13 @@ describe("AnonPollStore", () => {
 		});
 		expect(store.getChannelId(POLL)).toBe("chan");
 		expect(store.getChannelId("missing")).toBeNull();
-		store.createPoll({ id: "unlinked", question: "Q?", choices: ["A", "B"], closesAt: CLOSES });
+		store.createPoll({
+			authorId: "author",
+			id: "unlinked",
+			question: "Q?",
+			choices: ["A", "B"],
+			closesAt: CLOSES,
+		});
 		expect(store.getChannelId("unlinked")).toBeNull();
 	});
 
@@ -120,6 +134,7 @@ describe("AnonPollStore", () => {
 
 	test("closePoll closes only the requested due poll, once", () => {
 		store.createPoll({
+			authorId: "author",
 			id: "later",
 			question: "Later?",
 			choices: ["Yes", "No"],
@@ -136,6 +151,7 @@ describe("AnonPollStore", () => {
 
 	test("polls are independent", () => {
 		store.createPoll({
+			authorId: "author",
 			id: "poll2",
 			question: "Yes?",
 			choices: ["Yes", "No"],
@@ -157,6 +173,7 @@ describe("anonymity", () => {
 			const file = `${dir}/db.sqlite3`;
 			const { db, store } = await newStore(file);
 			store.createPoll({
+				authorId: "author",
 				id: POLL,
 				question: "Pizza or tacos?",
 				choices: ["Pizza", "Tacos"],
@@ -197,6 +214,7 @@ describe("anonymity", () => {
 			const file = `${dir}/db.sqlite3`;
 			const first = await newStore(file);
 			first.store.createPoll({
+				authorId: "author",
 				id: POLL,
 				question: "Q?",
 				choices: ["A", "B"],
@@ -208,6 +226,8 @@ describe("anonymity", () => {
 
 			const second = await newStore(file);
 			expect(second.store.getPoll(POLL)!.question).toBe("Q?");
+			expect(second.store.isAuthor(POLL, "author")).toBe(true);
+			expect(second.store.isAuthor(POLL, ALICE)).toBe(false);
 			expect(second.store.hasVoted(POLL, ALICE)).toBe(true);
 			expect(second.store.castVote(POLL, ALICE, 0, CREATED)).toBe("already_voted");
 			expect(second.store.getResults(POLL)!.choices.map((c) => c.count)).toEqual([0, 1]);

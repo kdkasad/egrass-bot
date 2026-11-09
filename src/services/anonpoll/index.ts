@@ -3,7 +3,7 @@
  * - Poll question and choices are public information
  * - Nobody can know who voted
  * - Nobody can know who voted for which choices
- * - Only those who voted can see the results
+ * - Only the author and those who voted can see the results
  * - Results are not visible to anyone until the poll ends
  * - Polls have [2, 10] choices
  * - Poll duration is [1 minute, 1 week]
@@ -213,7 +213,7 @@ export class AnonPollService extends Feature {
 			closesAt: new Date(this.#time.now().getTime() + durationMs),
 			closed: false,
 		};
-		this.#store.createPoll(poll);
+		this.#store.createPoll({ ...poll, authorId: interaction.user.id });
 
 		const select = new StringSelectMenuBuilder()
 			.setCustomId(`${ComponentPrefix.Vote}:${poll.id}`)
@@ -300,7 +300,11 @@ export class AnonPollService extends Feature {
 		let content: string;
 		if (!poll) content = Replies.pollNotFound;
 		else if (!this.#isPastDeadline(poll)) content = Replies.resultsNotReady(poll);
-		else if (!this.#store.hasVoted(pollId, interaction.user.id)) content = Replies.notVoted;
+		else if (
+			!this.#store.isAuthor(pollId, interaction.user.id) &&
+			!this.#store.hasVoted(pollId, interaction.user.id)
+		)
+			content = Replies.notVoted;
 		else content = renderResults(this.#store.getResults(pollId)!);
 		await wrapInteractionDo(
 			interaction,

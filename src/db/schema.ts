@@ -233,6 +233,9 @@ export const anonPolls = sqliteTable(
 	"anon_polls",
 	{
 		id: text("id").primaryKey().notNull(),
+		authorUserId: text("user_id")
+			.notNull()
+			.references(() => members.user_id),
 		question: text("question").notNull(),
 		messageId: text("message_id"),
 		closesAt: integer("closes_at", { mode: "timestamp" }).notNull(),

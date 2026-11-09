@@ -1,14 +1,16 @@
+import { members } from "../../db/schema";
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import {
 	MessageFlags,
 	TextInputStyle,
 	type ChatInputCommandInteraction,
+	type ButtonInteraction,
 	type ModalSubmitInteraction,
 	type SlashCommandBuilder,
 	type ModalBuilder,
 	type InteractionReplyOptions,
 } from "discord.js";
-import { CreateErrors } from "./messages";
+import { CreateErrors, Replies, renderResults } from "./messages";
 import { AnonPollService } from ".";
 import { AnonPollStore } from "./store";
 import { PollCipher } from "./cipher";
@@ -33,12 +35,22 @@ async function setup() {
 		},
 	} as unknown as EnvService;
 	const db = await DatabaseService.new(env, { createJob() {} } as unknown as CronService);
+	db.querySync("seed poll authors", (tx) =>
+		tx
+			.insert(members)
+			.values([
+				{ user_id: "author", display_name: "Author", username: "author" },
+				{ user_id: "u", display_name: "User", username: "u" },
+			])
+			.run(),
+	);
 	const store = new AnonPollStore(db, new PollCipher("secret"));
 	const time = new MockTimeSource();
 	time.setTime(new Date(100_000));
 	const send = mock(async () => ({}));
 	let command!: (i: ChatInputCommandInteraction) => Promise<void>;
 	let submit!: (i: ModalSubmitInteraction) => Promise<void>;
+	let results!: (i: ButtonInteraction) => Promise<void>;
 	let commandSpec!: SlashCommandBuilder;
 	const discord = {
 		registerSlashCommand(spec: SlashCommandBuilder, handler: typeof command) {
@@ -49,7 +61,9 @@ async function setup() {
 			submit = handler;
 		},
 		registerSelectMenuHandler() {},
-		registerButtonHandler() {},
+		registerButtonHandler(_prefix: string, handler: typeof results) {
+			results = handler;
+		},
 		client: {
 			channels: {
 				fetch: async () => ({
@@ -80,6 +94,7 @@ async function setup() {
 		send,
 		command: () => command,
 		submit: () => submit,
+		results: () => results,
 		commandSpec: () => commandSpec,
 	};
 }
@@ -92,6 +107,7 @@ test("startup restores only open polls, floors overdue timers at zero, and close
 		["closed", 80],
 	] as const) {
 		f.store.createPoll({
+			authorId: "author",
 			id,
 			closesAt: new Date(closesAt * 1000),
 			question: "Q?",
@@ -177,7 +193,7 @@ test("the argument-free command opens a modal without creating a poll or timer",
 		{ custom_id: "choices", style: TextInputStyle.Paragraph, required: true },
 		{ custom_id: "duration", style: TextInputStyle.Short, required: false, value: "1d" },
 	]);
-	// If the creator cancels, no submit event arrives and there is nothing to clean up.
+	// If the author cancels, no submit event arrives and there is nothing to clean up.
 	expect(f.store.openPollDeadlines()).toEqual([]);
 	expect(scheduled).toHaveLength(0);
 	await f.db.stop();
@@ -210,18 +226,15 @@ test("submission trims fields, deduplicates choices while preserving order and l
 	await f.db.stop();
 });
 
-test.each(["", "   ", "1m", "1w"])(
-	"accepts duration %j, with blank duration defaulting to one day",
-	async (duration) => {
-		const f = await setup();
-		new AnonPollService(f.env, f.discord, f.db, f.time);
-		const { interaction } = submission("valid", { duration });
-		await f.submit()(interaction);
-		expect(f.store.getPoll("valid")).not.toBeNull();
-		expect(scheduled.map((t) => t.delay)).toEqual([parseDuration(duration.trim() || "1d")]);
-		await f.db.stop();
-	},
-);
+test.each(["", "   ", "1m", "1w"])("accepts duration %j, with default", async (duration) => {
+	const f = await setup();
+	new AnonPollService(f.env, f.discord, f.db, f.time);
+	const { interaction } = submission("valid", { duration });
+	await f.submit()(interaction);
+	expect(f.store.getPoll("valid")).not.toBeNull();
+	expect(scheduled.map((t) => t.delay)).toEqual([parseDuration(duration.trim() || "1d")]);
+	await f.db.stop();
+});
 
 test("accepts maximum lengths and ten choices; duplicate matching is case-sensitive", async () => {
 	const f = await setup();
@@ -265,5 +278,40 @@ test.each([
 	});
 	expect(f.store.getPoll("invalid")).toBeNull();
 	expect(scheduled).toHaveLength(0);
+	await f.db.stop();
+});
+
+test("only author and voters see results", async () => {
+	const f = await setup();
+	new AnonPollService(f.env, f.discord, f.db, f.time);
+	const { interaction } = submission("access", { duration: "1m" });
+	await f.submit()(interaction);
+	expect(f.store.isAuthor("access", "u")).toBe(true);
+	expect(f.store.hasVoted("access", "u")).toBe(false);
+	expect(f.store.voterCount("access")).toBe(0);
+	expect(f.store.castVote("access", "voter", 1, f.time.now())).toBe("ok");
+	const press = async (userId: string) => {
+		const reply = mock(async (payload: InteractionReplyOptions) => payload);
+		await f.results()({
+			id: `results-${userId}`,
+			customId: "anonpoll/results:access",
+			user: { id: userId },
+			reply,
+		} as unknown as ButtonInteraction);
+		expect(reply.mock.calls[0]![0].flags).toEqual([MessageFlags.Ephemeral]);
+		return reply.mock.calls[0]![0].content;
+	};
+	for (const user of ["u", "voter", "outsider"]) {
+		expect(await press(user)).toBe(Replies.resultsNotReady(f.store.getPoll("access")!));
+	}
+	f.time.advance({ minutes: 1 });
+	const expected = renderResults(f.store.getResults("access")!);
+	expect(await press("u")).toBe(expected);
+	expect(await press("voter")).toBe(expected);
+	expect(await press("outsider")).toBe(Replies.notVoted);
+	// Author access must not add a voter or inflate the tally.
+	expect(f.store.hasVoted("access", "u")).toBe(false);
+	expect(f.store.voterCount("access")).toBe(1);
+	await new Promise<void>((resolve) => setImmediate(resolve));
 	await f.db.stop();
 });
