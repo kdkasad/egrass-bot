@@ -305,6 +305,7 @@ export class DiscordService extends Feature {
 				partials: [Partials.Reaction, Partials.Message, Partials.Channel],
 			});
 			const readyClient = new Promise<Client<true>>((resolve) => {
+				client.setMaxListeners(30);
 				client.once("clientReady", resolve);
 			});
 			client.login(env.vars.DISCORD_BOT_TOKEN);
