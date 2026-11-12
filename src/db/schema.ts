@@ -240,6 +240,9 @@ export const anonPolls = sqliteTable(
 		messageId: text("message_id"),
 		closesAt: integer("closes_at", { mode: "timestamp" }).notNull(),
 		closed: integer("closed", { mode: "boolean" }).notNull().default(false),
+		resultsVisibility: text("results_visibility", { enum: ["participants", "everyone"] })
+			.notNull()
+			.default("participants"),
 		/** Fixed-length encrypted counters hide counts and which choice changed. */
 		tally: blob("tally", { mode: "buffer" }).notNull(),
 	},

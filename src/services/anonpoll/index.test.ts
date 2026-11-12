@@ -49,6 +49,7 @@ async function setup() {
 	const store = new AnonPollStore(db, new PollCipher("secret"));
 	const time = new MockTimeSource();
 	time.setTime(new Date(100_000));
+	const edit = mock(async (payload: InteractionReplyOptions) => payload);
 	const send = mock(async (payload: { content: string }) => payload);
 	let submit!: (i: ModalSubmitInteraction) => Promise<void>;
 	let results!: (i: ButtonInteraction) => Promise<void>;
@@ -66,7 +67,7 @@ async function setup() {
 				fetch: async () => ({
 					isSendable: () => true,
 					send,
-					messages: { fetch: async () => ({ edit: async () => {} }) },
+					messages: { fetch: async () => ({ edit }) },
 				}),
 			},
 		},
@@ -94,7 +95,7 @@ async function setup() {
 
 	const start = () => new AnonPollService(env, discord, db, time);
 	const submitPoll = async (
-		overrides: Partial<Record<"question" | "choices" | "duration", string>> = {},
+		overrides: Partial<Record<"question" | "choices" | "duration" | "visibility", string>> = {},
 	) => {
 		const values: Record<string, string> = {
 			question: "Q?",
@@ -120,7 +121,10 @@ async function setup() {
 			guildId: "g",
 			user: { id: "author" },
 			reply,
-			fields: { getTextInputValue: (name: string) => values[name]! },
+			fields: {
+				getTextInputValue: (name: string) => values[name]!,
+				getStringSelectValues: () => [values.visibility ?? "participants"],
+			},
 		} as unknown as ModalSubmitInteraction);
 		return reply.mock.calls[0]![0];
 	};
@@ -135,7 +139,7 @@ async function setup() {
 		await flushInteractions();
 		return reply.mock.calls[0]![0];
 	};
-	return { store, time, send, start, advanceTime, submitPoll, viewResults };
+	return { store, time, send, edit, start, advanceTime, submitPoll, viewResults };
 }
 
 type Fixture = Awaited<ReturnType<typeof setup>>;
@@ -307,4 +311,27 @@ describe("results access", () => {
 			),
 		).toBe(true);
 	});
+});
+
+test("public results are persisted and shown inline only after closing", async () => {
+	const f = await createPoll({ duration: "1m", visibility: "everyone" });
+	expect(f.store.getPoll("poll")!.resultsVisibility).toBe("everyone");
+	expect(f.reply.content).toContain("Results will be visible to everyone");
+	f.store.castVote("poll", "voter", 1, f.time.now());
+	expect((await f.viewResults("outsider")).content).toContain("Results will be available");
+	expect(f.edit).not.toHaveBeenCalled();
+	await f.advanceTime(parseDuration("1m"));
+	expect(f.edit).toHaveBeenCalledTimes(1);
+	const payload = f.edit.mock.calls[0]![0];
+	expect(payload.content).toBe(
+		"**Anonymous poll:** Q?\n`░░░░░░░░░░░░` **0** (0%) A\n`████████████` **1** (100%) B\n\n-# Poll closed <t:160:R>",
+	);
+	expect(payload.content).toContain("**1** (100%) B");
+	expect(payload.components).toEqual([]);
+	expect(f.send).toHaveBeenCalledTimes(1);
+	expect(f.send.mock.calls[0]![0]).toMatchObject({
+		content: '<@author>\'s poll "Q?" has ended. Results are now visible.',
+		components: [],
+	});
+	expect((await f.viewResults("outsider")).content).toContain("**Results:** Q?");
 });

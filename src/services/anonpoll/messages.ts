@@ -20,6 +20,9 @@ export const CommandText = {
 
 export const ModalText = {
 	title: "Create anonymous poll",
+	visibility: "Who can see results when the poll ends?",
+	participants: "Just participants",
+	everyone: "Everyone",
 	question: "Question",
 	choices: "Choices",
 	choicesDescription: "One choice per line. 2–10 choices, up to 100 characters each.",
@@ -48,37 +51,54 @@ export const CreateErrors = {
 /** Private replies to voters and people pressing "View results" */
 export const Replies = {
 	voteRecorded: (poll: PollInfo) =>
-		`Your vote has been recorded anonymously. Results will be available to voters and the poll author <t:${dateToSqlite(poll.closesAt)}:R>.`,
+		`Your vote has been recorded anonymously. Results will be available to ${poll.resultsVisibility} <t:${dateToSqlite(poll.closesAt)}:R>.`,
 	alreadyVoted: "You've already voted in this poll. Votes can't be changed.",
 	badChoice: "That isn't a valid choice.",
 	pollClosed: "This poll has closed.",
 	pollNotFound: "This poll no longer exists.",
 	resultsNotReady: (poll: PollInfo) =>
-		`Results will be available to voters and the poll author <t:${dateToSqlite(poll.closesAt)}:R>.`,
+		`Results will be available to ${poll.resultsVisibility} <t:${dateToSqlite(poll.closesAt)}:R>.`,
 	notVoted: "Only the poll author and people who voted in this poll can see its results.",
 };
 
 /** The public poll message. Never shows tallies, only the number of voters. */
 export function renderPollMessage(poll: PollInfo, voters: number): string {
 	const status = poll.closed
-		? "-# This poll has closed. Results are available to voters and the poll author in the announcement below."
-		: `-# Votes are anonymous and can't be changed. Closes <t:${dateToSqlite(poll.closesAt)}:R>.`;
+		? ["-# This poll has closed. Results are available to participants."]
+		: [
+				`-# Closes <t:${dateToSqlite(poll.closesAt)}:R>.`,
+				`-# Votes are anonymous and can't be changed.`,
+				`-# Results will be visible to ${poll.resultsVisibility}.`,
+			];
 	return [
 		`📊 **Anonymous poll:** ${poll.question}`,
 		...poll.choices.map((c, i) => `${i + 1}. ${c}`),
+		`${plural(voters, "vote")}`,
 		"",
-		status,
-		`-# ${plural(voters, "vote")}`,
+		...status,
 	].join("\n");
 }
 
 /** Posted in the poll's channel, with the "View results" button, when it closes */
-export function renderClosedAnnouncement(poll: PollInfo, voters: number): string {
-	return `📊 The anonymous poll **${poll.question}** has closed with ${plural(voters, "vote")}. Results are now available to the poll author and everyone who voted.`;
+export function renderClosedAnnouncement(poll: PollInfo): string {
+	return (
+		`<@${poll.authorId}>'s poll "${poll.question}" has ended. ` +
+		`Results are now visible${poll.resultsVisibility === "participants" ? " to participants" : ""}.`
+	);
+}
+
+/** The original message for an ended poll with public results. */
+export function renderPublicClosedPoll(poll: PollInfo, results: PollResults): string {
+	return [
+		`📊 **Anonymous poll:** ${poll.question}`,
+		...renderResultLines(results),
+		"",
+		`-# Poll closed <t:${dateToSqlite(poll.closesAt)}:R>`,
+	].join("\n");
 }
 
 /** Results, shown privately to the author or someone who voted, once the poll has closed */
-export function renderResults(results: PollResults): string {
+function renderResultLines(results: PollResults): string[] {
 	const total = results.choices.reduce((sum, c) => sum + c.count, 0);
 	const lines = results.choices.map(({ text, count }) => {
 		const fraction = total === 0 ? 0 : count / total;
@@ -87,9 +107,10 @@ export function renderResults(results: PollResults): string {
 		const pct = Math.round(fraction * 100);
 		return `\`${bar}\` **${count}** (${pct}%) ${text}`;
 	});
-	return [
-		`📊 **Results:** ${results.question}`,
-		...lines,
-		`-# ${plural(total, "vote")} total`,
-	].join("\n");
+	lines.push(`${plural(total, "vote")} total`);
+	return lines;
+}
+
+export function renderResults(results: PollResults): string {
+	return [`📊 **Results:** ${results.question}`, ...renderResultLines(results)].join("\n");
 }

@@ -3,7 +3,7 @@
  * - Poll question and choices are public information
  * - Nobody can know who voted
  * - Nobody can know who voted for which choices
- * - Only the author and those who voted can see the results
+ * - Results visibility is chosen by the author (participants or everyone)
  * - Results are not visible to anyone until the poll ends
  * - Polls have [2, 10] choices
  * - Poll duration is [1 minute, 1 week]
@@ -41,11 +41,14 @@ import {
 	ModalText,
 	Replies,
 	renderClosedAnnouncement,
+	renderPublicClosedPoll,
 	renderPollMessage,
 	renderResults,
 } from "./messages";
 import { AnonPollStore, type PollInfo } from "./store";
 import { PollCipher } from "./cipher";
+import { anonPolls } from "../../db/schema";
+import z from "zod";
 
 enum ComponentPrefix {
 	Create = "anonpoll/create",
@@ -166,6 +169,18 @@ export class AnonPollService extends Feature {
 								.setValue(DEFAULT_DURATION)
 								.setMaxLength(100),
 						),
+					new LabelBuilder()
+						.setLabel(ModalText.visibility)
+						.setStringSelectMenuComponent(
+							new StringSelectMenuBuilder()
+								.setCustomId("visibility")
+								.setMinValues(1)
+								.setMaxValues(1)
+								.addOptions(
+									{ label: ModalText.everyone, value: "everyone", default: true },
+									{ label: ModalText.participants, value: "participants" },
+								),
+						),
 				),
 		);
 	}
@@ -207,11 +222,15 @@ export class AnonPollService extends Feature {
 		// The interaction ID is a unique snowflake so we use it as the poll ID
 		const poll: PollInfo = {
 			id: interaction.id,
+			authorId: interaction.user.id,
 			question,
 			choices,
 			messageId: null,
 			closesAt: new Date(this.#time.now().getTime() + durationMs),
 			closed: false,
+			resultsVisibility: z
+				.enum(anonPolls.resultsVisibility.enumValues)
+				.parse(interaction.fields.getStringSelectValues("visibility")[0]),
 		};
 		this.#store.createPoll({ ...poll, authorId: interaction.user.id });
 
@@ -247,7 +266,7 @@ export class AnonPollService extends Feature {
 		});
 	}
 
-	static #resultsRow(pollId: string) {
+	static resultsButtonRow(pollId: string) {
 		return new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setCustomId(`${ComponentPrefix.Results}:${pollId}`)
@@ -281,7 +300,7 @@ export class AnonPollService extends Feature {
 			"reply",
 		)({ content: messages[result], flags: [MessageFlags.Ephemeral] });
 
-		if (!poll) return;
+		if (!poll || result !== "ok") return;
 		// Re-rendering the message also clears the voter's selection in the dropdown.
 		try {
 			await interaction.message.edit({
@@ -301,6 +320,7 @@ export class AnonPollService extends Feature {
 		if (!poll) content = Replies.pollNotFound;
 		else if (!this.#isPastDeadline(poll)) content = Replies.resultsNotReady(poll);
 		else if (
+			poll.resultsVisibility !== "everyone" &&
 			!this.#store.isAuthor(pollId, interaction.user.id) &&
 			!this.#store.hasVoted(pollId, interaction.user.id)
 		)
@@ -327,14 +347,20 @@ export class AnonPollService extends Feature {
 			const channel = await this.#discord.client.channels.fetch(channelId);
 			if (!channel?.isSendable()) throw new Error("Poll channel is not sendable");
 			if (poll.messageId) {
-				// Replace the vote dropdown with a results button.
+				// Public polls show results inline; private polls use a results button.
 				// The poll message may have been deleted, which shouldn't stop the
 				// announcement.
 				try {
 					const message = await channel.messages.fetch(poll.messageId);
 					await message.edit({
-						content: renderPollMessage(poll, voters),
-						components: [AnonPollService.#resultsRow(poll.id)],
+						content:
+							poll.resultsVisibility === "everyone"
+								? renderPublicClosedPoll(poll, this.#store.getResults(poll.id)!)
+								: renderPollMessage(poll, voters),
+						components:
+							poll.resultsVisibility === "everyone"
+								? []
+								: [AnonPollService.resultsButtonRow(poll.id)],
 						allowedMentions: { parse: [] },
 					});
 				} catch (e) {
@@ -342,8 +368,11 @@ export class AnonPollService extends Feature {
 				}
 			}
 			await channel.send({
-				content: renderClosedAnnouncement(poll, voters),
-				components: [AnonPollService.#resultsRow(poll.id)],
+				content: renderClosedAnnouncement(poll),
+				components:
+					poll.resultsVisibility === "everyone"
+						? []
+						: [AnonPollService.resultsButtonRow(poll.id)],
 				reply: poll.messageId
 					? { messageReference: poll.messageId, failIfNotExists: false }
 					: undefined,

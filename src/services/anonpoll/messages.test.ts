@@ -8,6 +8,7 @@ import {
 	renderPollMessage,
 	renderClosedAnnouncement,
 	renderResults,
+	renderPublicClosedPoll,
 } from "./messages";
 import type { PollInfo } from "./store";
 
@@ -23,12 +24,16 @@ afterEach(() => {
 
 const poll: PollInfo = {
 	id: "example-poll",
+	authorId: "author",
 	question: "What should we order for lunch?",
 	choices: ["Pizza", "Tacos", "Sushi"],
 	messageId: "example-message",
 	closesAt: new Date("2026-11-08T18:00:00.000Z"),
 	closed: false,
+	resultsVisibility: "participants",
 };
+
+const publicPoll: PollInfo = { ...poll, resultsVisibility: "everyone" };
 
 describe("CommandText", () => {
 	test("name", () => {
@@ -123,9 +128,15 @@ describe("CreateErrors", () => {
 });
 
 describe("Replies", () => {
-	test("voteRecorded", () => {
+	test("voteRecorded (participants)", () => {
 		expect(Replies.voteRecorded(poll)).toMatchInlineSnapshot(
-			`"Your vote has been recorded anonymously. Results will be available to voters and the poll author <t:1794160800:R>."`,
+			`"Your vote has been recorded anonymously. Results will be available to participants <t:1794160800:R>."`,
+		);
+	});
+
+	test("voteRecorded (everyone)", () => {
+		expect(Replies.voteRecorded(publicPoll)).toMatchInlineSnapshot(
+			`"Your vote has been recorded anonymously. Results will be available to everyone <t:1794160800:R>."`,
 		);
 	});
 
@@ -147,9 +158,15 @@ describe("Replies", () => {
 		expect(Replies.pollNotFound).toMatchInlineSnapshot(`"This poll no longer exists."`);
 	});
 
-	test("resultsNotReady", () => {
+	test("resultsNotReady (participants)", () => {
 		expect(Replies.resultsNotReady(poll)).toMatchInlineSnapshot(
-			`"Results will be available to voters and the poll author <t:1794160800:R>."`,
+			`"Results will be available to participants <t:1794160800:R>."`,
+		);
+	});
+
+	test("resultsNotReady (everyone)", () => {
+		expect(Replies.resultsNotReady(publicPoll)).toMatchInlineSnapshot(
+			`"Results will be available to everyone <t:1794160800:R>."`,
 		);
 	});
 
@@ -160,28 +177,18 @@ describe("Replies", () => {
 	});
 });
 
-describe("public poll", () => {
+describe("renderPollMessage", () => {
 	test("open with no votes", () => {
 		expect(renderPollMessage(poll, 0)).toMatchInlineSnapshot(`
 		  "📊 **Anonymous poll:** What should we order for lunch?
 		  1. Pizza
 		  2. Tacos
 		  3. Sushi
+		  0 votes
 
-		  -# Votes are anonymous and can't be changed. Closes <t:1794160800:R>.
-		  -# 0 votes"
-		`);
-	});
-
-	test("open with one vote", () => {
-		expect(renderPollMessage(poll, 1)).toMatchInlineSnapshot(`
-		  "📊 **Anonymous poll:** What should we order for lunch?
-		  1. Pizza
-		  2. Tacos
-		  3. Sushi
-
-		  -# Votes are anonymous and can't be changed. Closes <t:1794160800:R>.
-		  -# 1 vote"
+		  -# Closes <t:1794160800:R>.
+		  -# Votes are anonymous and can't be changed.
+		  -# Results will be visible to participants."
 		`);
 	});
 
@@ -191,28 +198,28 @@ describe("public poll", () => {
 		  1. Pizza
 		  2. Tacos
 		  3. Sushi
+		  8 votes
 
-		  -# This poll has closed. Results are available to voters and the poll author in the announcement below.
-		  -# 8 votes"
+		  -# This poll has closed. Results are available to participants."
+		`);
+	});
+
+	test("open with results visible to everyone", () => {
+		expect(renderPollMessage(publicPoll, 8)).toMatchInlineSnapshot(`
+		  "📊 **Anonymous poll:** What should we order for lunch?
+		  1. Pizza
+		  2. Tacos
+		  3. Sushi
+		  8 votes
+
+		  -# Closes <t:1794160800:R>.
+		  -# Votes are anonymous and can't be changed.
+		  -# Results will be visible to everyone."
 		`);
 	});
 });
 
-describe("closing announcement", () => {
-	test("multiple votes", () => {
-		expect(renderClosedAnnouncement(poll, 8)).toMatchInlineSnapshot(
-			`"📊 The anonymous poll **What should we order for lunch?** has closed with 8 votes. Results are now available to the poll author and everyone who voted."`,
-		);
-	});
-
-	test("one vote", () => {
-		expect(renderClosedAnnouncement(poll, 1)).toMatchInlineSnapshot(
-			`"📊 The anonymous poll **What should we order for lunch?** has closed with 1 vote. Results are now available to the poll author and everyone who voted."`,
-		);
-	});
-});
-
-describe("results", () => {
+describe("renderResults", () => {
 	test("mixed counts", () => {
 		expect(
 			renderResults({
@@ -228,7 +235,7 @@ describe("results", () => {
 		  \`████████░░░░\` **5** (63%) Pizza
 		  \`█████░░░░░░░\` **3** (38%) Tacos
 		  \`░░░░░░░░░░░░\` **0** (0%) Sushi
-		  -# 8 votes total"
+		  8 votes total"
 		`);
 	});
 
@@ -243,26 +250,47 @@ describe("results", () => {
 		  \`░░░░░░░░░░░░\` **0** (0%) Pizza
 		  \`░░░░░░░░░░░░\` **0** (0%) Tacos
 		  \`░░░░░░░░░░░░\` **0** (0%) Sushi
-		  -# 0 votes total"
+		  0 votes total"
 		`);
 	});
+});
 
-	test("one vote", () => {
+describe("renderPublicClosedPoll", () => {
+	test("closed poll", () => {
 		expect(
-			renderResults({
-				question: poll.question,
-				choices: [
-					{ text: "Pizza", count: 1 },
-					{ text: "Tacos", count: 0 },
-					{ text: "Sushi", count: 0 },
-				],
-			}),
+			renderPublicClosedPoll(
+				{ ...publicPoll, closed: true },
+				{
+					question: poll.question,
+					choices: [
+						{ text: "Pizza", count: 5 },
+						{ text: "Tacos", count: 3 },
+						{ text: "Sushi", count: 0 },
+					],
+				},
+			),
 		).toMatchInlineSnapshot(`
-		  "📊 **Results:** What should we order for lunch?
-		  \`████████████\` **1** (100%) Pizza
-		  \`░░░░░░░░░░░░\` **0** (0%) Tacos
+		  "📊 **Anonymous poll:** What should we order for lunch?
+		  \`████████░░░░\` **5** (63%) Pizza
+		  \`█████░░░░░░░\` **3** (38%) Tacos
 		  \`░░░░░░░░░░░░\` **0** (0%) Sushi
-		  -# 1 vote total"
+		  8 votes total
+
+		  -# Poll closed <t:1794160800:R>"
 		`);
+	});
+});
+
+describe("renderClosedAnnouncement", () => {
+	test("participants", () => {
+		expect(renderClosedAnnouncement(poll)).toMatchInlineSnapshot(
+			`"<@author>'s poll "What should we order for lunch?" has ended. Results are now visible to participants."`,
+		);
+	});
+
+	test("everyone", () => {
+		expect(renderClosedAnnouncement(publicPoll)).toMatchInlineSnapshot(
+			`"<@author>'s poll "What should we order for lunch?" has ended. Results are now visible."`,
+		);
 	});
 });

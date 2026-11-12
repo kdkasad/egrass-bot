@@ -39,6 +39,7 @@ export class AnonPollStore {
 		question: string;
 		choices: string[];
 		closesAt: Date;
+		resultsVisibility?: PollInfo["resultsVisibility"];
 	}) {
 		const { choices, authorId, ...info } = poll;
 		const tally = this.#cipher.encryptTally(choices.map(() => 0));
@@ -163,7 +164,9 @@ export class AnonPollStore {
 				)
 				.returning()
 				.get();
-			return poll ? { ...poll, choices: this.#choicesText(tx, pollId) } : null;
+			return poll
+				? { ...poll, authorId: poll.authorUserId, choices: this.#choicesText(tx, pollId) }
+				: null;
 		});
 	}
 
@@ -183,10 +186,12 @@ export class AnonPollStore {
 			const poll = tx
 				.select({
 					id: anonPolls.id,
+					authorId: anonPolls.authorUserId,
 					question: anonPolls.question,
 					messageId: anonPolls.messageId,
 					closesAt: anonPolls.closesAt,
 					closed: anonPolls.closed,
+					resultsVisibility: anonPolls.resultsVisibility,
 				})
 				.from(anonPolls)
 				.where(eq(anonPolls.id, id))
@@ -215,11 +220,13 @@ export type CastVoteResult = "ok" | "already_voted" | "closed" | "no_poll" | "ba
 
 export interface PollInfo {
 	id: string;
+	authorId: string;
 	question: string;
 	choices: string[];
 	messageId: string | null;
 	closesAt: Date;
 	closed: boolean;
+	resultsVisibility: typeof anonPolls.$inferSelect.resultsVisibility;
 }
 
 export interface PollResults {

@@ -70,12 +70,14 @@ describe("AnonPollStore", () => {
 		expect(store.voterCount(POLL)).toBe(0);
 		expect(store.getPoll(POLL)).toEqual({
 			id: POLL,
+			authorId: "author",
 			question: "Pizza or tacos?",
 			choices: ["Pizza", "Tacos", "Neither"],
 
 			messageId: "msg",
 			closesAt: CLOSES,
 			closed: false,
+			resultsVisibility: "participants",
 		});
 		expect(store.getResults(POLL)!.choices.map((c) => c.count)).toEqual([0, 0, 0]);
 	});
