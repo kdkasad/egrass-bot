@@ -11,8 +11,10 @@ import {
 	renderClosedAnnouncement,
 	renderResults,
 	renderPublicClosedPoll,
+	renderLivePolls,
+	LiveCommandText,
 } from "./messages";
-import type { PollInfo } from "./store";
+import type { LivePoll, PollInfo } from "./store";
 
 // Keep interpolated dates reproducible across machines without changing renderers.
 const originalTimezone = process.env.TZ;
@@ -297,6 +299,7 @@ describe("renderClosedAnnouncement", () => {
 	});
 });
 
+<<<<<<< Updated upstream
 describe("renderPollList", () => {
 	const entry: PollListEntry = {
 		authorId: "author",
@@ -428,5 +431,49 @@ describe("renderPollList", () => {
     ,
     ]
   `);
+=======
+describe("renderLivePolls", () => {
+	const live = (n: number, question = `Poll ${n}?`): LivePoll => ({
+		id: `p${n}`,
+		question,
+		closesAt: new Date("2026-11-08T18:00:00.000Z"),
+		messageId: `m${n}`,
+		channelId: "c",
+		guildId: "g",
+	});
+
+	test("lists polls with links and deadlines", () => {
+		expect(renderLivePolls([live(1), live(2)], false)).toMatchInlineSnapshot(`
+		  "**Open polls (2):**
+		  - [Poll 1?](https://discord.com/channels/g/c/m1) · closes <t:1794160800:R>
+		  - [Poll 2?](https://discord.com/channels/g/c/m2) · closes <t:1794160800:R>"
+		`);
+	});
+
+	test("unvoted header", () => {
+		expect(renderLivePolls([live(1)], true)).toMatchInlineSnapshot(`
+		  "**Open polls you haven't voted in (1):**
+		  - [Poll 1?](https://discord.com/channels/g/c/m1) · closes <t:1794160800:R>"
+		`);
+	});
+
+	test("empty", () => {
+		expect(renderLivePolls([], false)).toBe(LiveCommandText.none);
+		expect(renderLivePolls([], true)).toBe(LiveCommandText.noneUnvoted);
+	});
+
+	test("escapes markdown and brackets in questions", () => {
+		expect(renderLivePolls([live(1, "[a](b) *c*")], false)).toContain(
+			"- [\\[a\\](b) \\*c\\*](https://discord.com/channels/g/c/m1)",
+		);
+	});
+
+	test("truncates to fit with a count of the rest", () => {
+		const polls = Array.from({ length: 50 }, (_, i) => live(i, "x".repeat(80)));
+		const text = renderLivePolls(polls, false);
+		expect(text.length).toBeLessThanOrEqual(2000);
+		const shown = text.split("\n").filter((l) => l.startsWith("- ")).length;
+		expect(text.endsWith(`...and ${50 - shown} more`)).toBe(true);
+>>>>>>> Stashed changes
 	});
 });

@@ -38,9 +38,11 @@ import {
 	CommandText,
 	ComponentText,
 	CreateErrors,
+	LiveCommandText,
 	ModalText,
 	Replies,
 	renderClosedAnnouncement,
+	renderLivePolls,
 	renderPublicClosedPoll,
 	renderPollMessage,
 	renderResults,
@@ -75,6 +77,17 @@ export class AnonPollService extends Feature {
 		)
 		.addSubcommand((subcommand) => subcommand.setName("list").setDescription(CommandText.list));
 
+	static #liveCommandSpec = new SlashCommandBuilder()
+		.setName(LiveCommandText.name)
+		.setDescription(LiveCommandText.description)
+		.setContexts(InteractionContextType.Guild)
+		.addBooleanOption((opt) =>
+			opt
+				.setName(LiveCommandText.unvoted)
+				.setDescription(LiveCommandText.unvotedDescription)
+				.setRequired(false),
+		);
+
 	#discord: DiscordService;
 	#store: AnonPollStore;
 	#time: TimeSource;
@@ -93,6 +106,9 @@ export class AnonPollService extends Feature {
 		if (this.isEnabled()) {
 			this.#discord.registerSlashCommand(AnonPollService.#commandSpec, (i) =>
 				this.#handleCommand(i),
+			);
+			this.#discord.registerSlashCommand(AnonPollService.#liveCommandSpec, (i) =>
+				this.#handleLivePolls(i),
 			);
 			this.#discord.registerModalHandler(ComponentPrefix.Create, (i) =>
 				this.#handleSubmit(i),
@@ -218,6 +234,22 @@ export class AnonPollService extends Feature {
 						),
 				),
 		);
+	}
+
+	@traced("event.handler")
+	async #handleLivePolls(interaction: ChatInputCommandInteraction): Promise<void> {
+		const unvotedOnly = interaction.options.getBoolean(LiveCommandText.unvoted) ?? false;
+		let polls = this.#store.livePolls(interaction.guildId!, this.#time.now());
+		if (unvotedOnly)
+			polls = polls.filter((poll) => !this.#store.hasVoted(poll.id, interaction.user.id));
+		await wrapInteractionDo(
+			interaction,
+			"reply",
+		)({
+			content: renderLivePolls(polls, unvotedOnly),
+			flags: [MessageFlags.Ephemeral],
+			allowedMentions: { parse: [] },
+		});
 	}
 
 	@traced("event.handler")

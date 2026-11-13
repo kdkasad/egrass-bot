@@ -207,6 +207,32 @@ export class AnonPollStore {
 		);
 	}
 
+	/** Open polls in a guild with a posted message, soonest-closing first. */
+	livePolls(guildId: string, now: Date): LivePoll[] {
+		return this.#db.querySync("list live anonymous polls", (tx) =>
+			tx
+				.select({
+					id: anonPolls.id,
+					question: anonPolls.question,
+					closesAt: anonPolls.closesAt,
+					messageId: messages.message_id,
+					channelId: messages.channel_id,
+					guildId: messages.guild_id,
+				})
+				.from(anonPolls)
+				.innerJoin(messages, eq(anonPolls.messageId, messages.message_id))
+				.where(
+					and(
+						eq(anonPolls.closed, false),
+						gt(anonPolls.closesAt, now),
+						eq(messages.guild_id, guildId),
+					),
+				)
+				.orderBy(asc(anonPolls.closesAt))
+				.all(),
+		);
+	}
+
 	getPoll(id: string): PollInfo | null {
 		return this.#db.querySync("get anonymous poll", (tx) => {
 			const poll = tx
@@ -253,6 +279,15 @@ export interface PollInfo {
 	closesAt: Date;
 	closed: boolean;
 	resultsVisibility: typeof anonPolls.$inferSelect.resultsVisibility;
+}
+
+export interface LivePoll {
+	id: string;
+	question: string;
+	closesAt: Date;
+	messageId: string;
+	channelId: string;
+	guildId: string;
 }
 
 export interface PollResults {

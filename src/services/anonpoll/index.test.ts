@@ -5,6 +5,8 @@ import {
 	type ActionRowBuilder,
 	type StringSelectMenuBuilder,
 	type ButtonInteraction,
+	type ChatInputCommandInteraction,
+	type SlashCommandBuilder,
 	type ModalSubmitInteraction,
 	type InteractionReplyOptions,
 	type MessageFlagsResolvable,
@@ -12,7 +14,7 @@ import {
 	type SlashCommandBuilder,
 } from "discord.js";
 import { members } from "../../db/schema";
-import { CreateErrors, Replies } from "./messages";
+import { CreateErrors, LiveCommandText, Replies } from "./messages";
 import { AnonPollService } from ".";
 import { AnonPollStore } from "./store";
 import { PollCipher } from "./cipher";
@@ -55,12 +57,22 @@ async function setup() {
 	const send = mock(async (payload: { content: string }) => payload);
 	let submit!: (i: ModalSubmitInteraction) => Promise<void>;
 	let results!: (i: ButtonInteraction) => Promise<void>;
+<<<<<<< Updated upstream
 	let command!: (i: ChatInputCommandInteraction) => Promise<void>;
 	let commandSpec!: SlashCommandBuilder;
 	const discord = {
 		registerSlashCommand(spec: SlashCommandBuilder, handler: typeof command) {
 			commandSpec = spec;
 			command = handler;
+=======
+	let live!: (i: ChatInputCommandInteraction) => Promise<void>;
+	const discord = {
+		registerSlashCommand(
+			spec: SlashCommandBuilder,
+			handler: (i: ChatInputCommandInteraction) => Promise<void>,
+		) {
+			if (spec.name === "livepolls") live = handler;
+>>>>>>> Stashed changes
 		},
 		registerModalHandler(_prefix: string, handler: typeof submit) {
 			submit = handler;
@@ -146,6 +158,7 @@ async function setup() {
 		await flushInteractions();
 		return reply.mock.calls[0]![0];
 	};
+<<<<<<< Updated upstream
 	const listPolls = async () => {
 		const deferReply = mock(async () => {});
 		const editReply = mock(async () => {});
@@ -176,6 +189,20 @@ async function setup() {
 		listPolls,
 		getCommandSpec: () => commandSpec.toJSON(),
 	};
+=======
+	const livePolls = async (userId: string, unvoted: boolean | null = null) => {
+		const reply = mock(async (payload: InteractionReplyOptions) => payload);
+		await live({
+			id: "live",
+			guildId: "g",
+			user: { id: userId },
+			options: { getBoolean: () => unvoted },
+			reply,
+		} as unknown as ChatInputCommandInteraction);
+		return reply.mock.calls[0]![0];
+	};
+	return { store, time, send, edit, start, advanceTime, submitPoll, viewResults, livePolls };
+>>>>>>> Stashed changes
 }
 
 type Fixture = Awaited<ReturnType<typeof setup>>;
@@ -316,6 +343,33 @@ describe("submission", () => {
 			),
 		).toBe(true);
 		expect(store.getPoll("poll")).toBeNull();
+	});
+});
+
+describe("live polls", () => {
+	test("lists open polls privately with a link", async () => {
+		const f = await createPoll({ question: "Lunch?" });
+		const reply = await f.livePolls("voter");
+		expect(
+			new MessageFlagsBitField(reply.flags as MessageFlagsResolvable).has(
+				MessageFlags.Ephemeral,
+			),
+		).toBe(true);
+		expect(reply.content).toContain("[Lunch?](https://discord.com/channels/g/c/message)");
+	});
+
+	test("unvoted filter hides polls the user voted in", async () => {
+		const f = await createPoll();
+		f.store.castVote("poll", "voter", 0, f.time.now());
+		expect((await f.livePolls("voter", true)).content).toBe(LiveCommandText.noneUnvoted);
+		expect((await f.livePolls("voter", false)).content).toContain("Q?");
+		expect((await f.livePolls("other", true)).content).toContain("Q?");
+	});
+
+	test("closed polls are not listed", async () => {
+		const f = await createPoll();
+		await f.advanceTime(parseDuration("1d"));
+		expect((await f.livePolls("voter")).content).toBe(LiveCommandText.none);
 	});
 });
 

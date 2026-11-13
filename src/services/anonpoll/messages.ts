@@ -2,9 +2,14 @@
  * All user-facing text for anonymous polls.
  */
 
+<<<<<<< Updated upstream
 import { escapeMarkdown } from "discord.js";
+=======
+import { escapeMarkdown, messageLink } from "discord.js";
+
+>>>>>>> Stashed changes
 import { dateToSqlite } from "../../utils/time";
-import type { PollInfo, PollResults } from "./store";
+import type { LivePoll, PollInfo, PollResults } from "./store";
 
 /** Width of the results bar chart, in characters */
 const BAR_WIDTH = 12;
@@ -19,6 +24,16 @@ export const CommandText = {
 	description: "Manage anonymous polls",
 	create: "Create an anonymous poll",
 	list: "List open anonymous polls",
+};
+
+/** The /livepolls command */
+export const LiveCommandText = {
+	name: "livepolls",
+	description: "List open anonymous polls",
+	unvoted: "unvoted",
+	unvotedDescription: "Only show polls you haven't voted in",
+	none: "There are no open anonymous polls.",
+	noneUnvoted: "You've voted in every open anonymous poll.",
 };
 
 export const ModalText = {
@@ -118,6 +133,7 @@ export function renderResults(results: PollResults): string {
 	return [`📊 **Results:** ${results.question}`, ...renderResultLines(results)].join("\n");
 }
 
+<<<<<<< Updated upstream
 /** Poll metadata needed to render the invoker's open-poll list. */
 export interface PollListEntry {
 	authorId: string;
@@ -160,4 +176,30 @@ export function renderPollList(guildId: string, polls: PollListEntry[]): string[
 	}
 	if (page) pages.push(page);
 	return pages;
+=======
+/** Private /livepolls reply, truncated to fit in a Discord message. */
+export function renderLivePolls(polls: LivePoll[], unvotedOnly: boolean, maxLength = 2000): string {
+	if (polls.length === 0) return unvotedOnly ? LiveCommandText.noneUnvoted : LiveCommandText.none;
+	const header = unvotedOnly
+		? `**Open polls you haven't voted in (${polls.length}):**`
+		: `**Open polls (${polls.length}):**`;
+	const lines = [header];
+	let length = header.length;
+	for (const [i, poll] of polls.entries()) {
+		// Brackets would break the masked link.
+		const question = escapeMarkdown(poll.question).replace(/[[\]]/g, "\\$&");
+		const link = messageLink(poll.channelId, poll.messageId, poll.guildId);
+		const line = `- [${question}](${link}) · closes <t:${dateToSqlite(poll.closesAt)}:R>`;
+		const remaining = polls.length - i;
+		const more = `\n...and ${remaining - 1} more`;
+		// Leave room for the "...and N more" line unless this is the last poll.
+		if (length + 1 + line.length + (remaining > 1 ? more.length : 0) > maxLength) {
+			lines.push(`...and ${remaining} more`);
+			break;
+		}
+		lines.push(line);
+		length += 1 + line.length;
+	}
+	return lines.join("\n");
+>>>>>>> Stashed changes
 }

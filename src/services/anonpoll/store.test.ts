@@ -150,6 +150,53 @@ describe("AnonPollStore", () => {
 		expect(store.castVote(POLL, ALICE, 0, CREATED)).toBe("closed");
 	});
 
+	test("livePolls lists open, posted polls in the guild, soonest-closing first", () => {
+		const addPoll = (id: string, closesAt: Date, guildId: string | null) => {
+			store.createPoll({
+				authorId: "author",
+				id,
+				question: id,
+				choices: ["A", "B"],
+				closesAt,
+			});
+			if (guildId)
+				store.setMessage(id, {
+					message_id: `${id}-msg`,
+					guild_id: guildId,
+					channel_id: "chan",
+					user_id: "bot",
+					timestamp: 1,
+					content: "poll",
+				});
+		};
+		addPoll("sooner", addSeconds(CLOSES, -1), "g");
+		addPoll("other-guild", CLOSES, "other");
+		addPoll("unposted", CLOSES, null);
+		addPoll("closed", addSeconds(CREATED, 1), "g");
+		store.closePoll("closed", addSeconds(CREATED, 1));
+
+		expect(store.livePolls("g", new Date(0))).toEqual([
+			{
+				id: "sooner",
+				question: "sooner",
+				closesAt: addSeconds(CLOSES, -1),
+				messageId: "sooner-msg",
+				channelId: "chan",
+				guildId: "g",
+			},
+			{
+				id: POLL,
+				question: "Pizza or tacos?",
+				closesAt: CLOSES,
+				messageId: "msg",
+				channelId: "chan",
+				guildId: "g",
+			},
+		]);
+		// Polls past their deadline are excluded even before the close timer fires.
+		expect(store.livePolls("g", CLOSES)).toEqual([]);
+	});
+
 	test("polls are independent", () => {
 		store.createPoll({
 			authorId: "author",
