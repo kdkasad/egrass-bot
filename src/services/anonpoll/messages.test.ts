@@ -6,6 +6,8 @@ import {
 	CreateErrors,
 	Replies,
 	renderPollMessage,
+	renderPollList,
+	type PollListEntry,
 	renderClosedAnnouncement,
 	renderResults,
 	renderPublicClosedPoll,
@@ -41,7 +43,7 @@ describe("CommandText", () => {
 	});
 
 	test("description", () => {
-		expect(CommandText.description).toMatchInlineSnapshot(`"Create an anonymous poll"`);
+		expect(CommandText.description).toMatchInlineSnapshot(`"Manage anonymous polls"`);
 	});
 });
 
@@ -88,7 +90,7 @@ describe("ComponentText", () => {
 describe("CreateErrors", () => {
 	test("tryAgain", () => {
 		expect(CreateErrors.tryAgain).toMatchInlineSnapshot(
-			`"Run /anon-poll again to re-enter your poll."`,
+			`"Run /anon-poll create again to re-enter your poll."`,
 		);
 	});
 
@@ -292,5 +294,139 @@ describe("renderClosedAnnouncement", () => {
 		expect(renderClosedAnnouncement(publicPoll)).toMatchInlineSnapshot(
 			`"<@author>'s poll "What should we order for lunch?" has ended. Results are now visible."`,
 		);
+	});
+});
+
+describe("renderPollList", () => {
+	const entry: PollListEntry = {
+		authorId: "author",
+		question: "What should we order for lunch?",
+		closesAt: poll.closesAt,
+		channelId: "lunch",
+		messageId: "lunch-poll",
+		hasVoted: true,
+	};
+	test("both voting groups", () => {
+		expect(
+			renderPollList("server", [
+				entry,
+				{
+					...entry,
+					authorId: "another-author",
+					question: "When should we meet?",
+					messageId: "meeting-poll",
+					hasVoted: false,
+				},
+			]),
+		).toMatchInlineSnapshot(`
+    [
+      
+    "## Already voted
+
+    - <@author>: What should we order for lunch?
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    ## Haven't voted yet
+
+    - <@another-author>: When should we meet?
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/meeting-poll"
+    ,
+    ]
+  `);
+	});
+	test("no open polls", () => {
+		expect(renderPollList("server", [])).toMatchInlineSnapshot(`
+    [
+      "There are no open anonymous polls.",
+    ]
+  `);
+	});
+	test("no polls voted in", () => {
+		expect(renderPollList("server", [{ ...entry, hasVoted: false }])).toMatchInlineSnapshot(`
+    [
+      
+    "## Already voted
+
+    None.
+
+    ## Haven't voted yet
+
+    - <@author>: What should we order for lunch?
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll"
+    ,
+    ]
+  `);
+	});
+	test("all polls voted in", () => {
+		expect(renderPollList("server", [entry])).toMatchInlineSnapshot(`
+    [
+      
+    "## Already voted
+
+    - <@author>: What should we order for lunch?
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    ## Haven't voted yet
+
+    None."
+    ,
+    ]
+  `);
+	});
+	test("escapes question formatting and flattens newlines", () => {
+		expect(
+			renderPollList("server", [
+				{ ...entry, question: "**Pizza** or [tacos](https://example.com)?\nVote now!" },
+			]),
+		).toMatchInlineSnapshot(`
+    [
+      
+    "## Already voted
+
+    - <@author>: \\*\\*Pizza\\*\\* or [tacos](https://example.com)? Vote now!
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    ## Haven't voted yet
+
+    None."
+    ,
+    ]
+  `);
+	});
+	test("splits long lists into messages without splitting entries", () => {
+		const polls = Array.from({ length: 5 }, (_, i) => ({
+			...entry,
+			question: `${i + 1}. ${"Lunch? ".repeat(60)}`,
+		}));
+		const pages = renderPollList("server", polls);
+		expect(pages.length).toBeGreaterThan(1);
+		expect(pages.every((page) => page.length <= 2000)).toBe(true);
+		expect(pages).toMatchInlineSnapshot(`
+    [
+      
+    "## Already voted
+
+    - <@author>: 1. Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? 
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    - <@author>: 2. Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? 
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    - <@author>: 3. Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? 
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll"
+    ,
+      
+    "- <@author>: 4. Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? 
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    - <@author>: 5. Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? Lunch? 
+      Ends <t:1794160800:R>. https://discord.com/channels/server/lunch/lunch-poll
+
+    ## Haven't voted yet
+
+    None."
+    ,
+    ]
+  `);
 	});
 });

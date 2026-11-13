@@ -1,4 +1,4 @@
-import { and, asc, count, eq, lte } from "drizzle-orm";
+import { and, asc, count, eq, gt, lte } from "drizzle-orm";
 
 import { anonPolls, anonPollChoices, anonPollVoters, messages } from "../../db/schema";
 import type { DatabaseService, Transaction } from "../database";
@@ -168,6 +168,32 @@ export class AnonPollStore {
 				? { ...poll, authorId: poll.authorUserId, choices: this.#choicesText(tx, pollId) }
 				: null;
 		});
+	}
+
+	/** Published polls in this server whose voting deadline has not passed. */
+	listOpenPolls(guildId: string, now: Date) {
+		return this.#db.querySync("list open anonymous polls", (tx) =>
+			tx
+				.select({
+					id: anonPolls.id,
+					authorId: anonPolls.authorUserId,
+					question: anonPolls.question,
+					closesAt: anonPolls.closesAt,
+					messageId: messages.message_id,
+					channelId: messages.channel_id,
+				})
+				.from(anonPolls)
+				.innerJoin(messages, eq(anonPolls.messageId, messages.message_id))
+				.where(
+					and(
+						eq(messages.guild_id, guildId),
+						eq(anonPolls.closed, false),
+						gt(anonPolls.closesAt, now),
+					),
+				)
+				.orderBy(asc(anonPolls.closesAt), asc(anonPolls.id))
+				.all(),
+		);
 	}
 
 	/** Fetch scheduling data for open polls. */

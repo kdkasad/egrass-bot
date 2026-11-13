@@ -2,6 +2,7 @@
  * All user-facing text for anonymous polls.
  */
 
+import { escapeMarkdown } from "discord.js";
 import { dateToSqlite } from "../../utils/time";
 import type { PollInfo, PollResults } from "./store";
 
@@ -15,7 +16,9 @@ function plural(n: number, word: string) {
 /** Slash command name and description */
 export const CommandText = {
 	name: "anon-poll",
-	description: "Create an anonymous poll",
+	description: "Manage anonymous polls",
+	create: "Create an anonymous poll",
+	list: "List open anonymous polls",
 };
 
 export const ModalText = {
@@ -38,7 +41,7 @@ export const ComponentText = {
 
 /** Errors shown (privately) to the poll author when the creation form is invalid */
 export const CreateErrors = {
-	tryAgain: "Run /anon-poll again to re-enter your poll.",
+	tryAgain: "Run /anon-poll create again to re-enter your poll.",
 	questionTooLong: "The question must be at most 300 characters.",
 	tooManyChoices: "A poll can have at most ten choices.",
 	choiceTooLong: "Each choice must be at most 100 characters.",
@@ -113,4 +116,48 @@ function renderResultLines(results: PollResults): string[] {
 
 export function renderResults(results: PollResults): string {
 	return [`📊 **Results:** ${results.question}`, ...renderResultLines(results)].join("\n");
+}
+
+/** Poll metadata needed to render the invoker's open-poll list. */
+export interface PollListEntry {
+	authorId: string;
+	question: string;
+	closesAt: Date;
+	channelId: string;
+	messageId: string;
+	hasVoted: boolean;
+}
+
+/** Render complete messages, splitting at entry boundaries for Discord's limit. */
+export function renderPollList(guildId: string, polls: PollListEntry[]): string[] {
+	const voted: string[] = [];
+	const notVoted: string[] = [];
+	for (const poll of polls) {
+		const group = poll.hasVoted ? voted : notVoted;
+		group.push(
+			`- <@${poll.authorId}>: ${escapeMarkdown(poll.question).replace(/\n/g, " ")}\n` +
+				`  Ends <t:${dateToSqlite(poll.closesAt)}:R>. ` +
+				`https://discord.com/channels/${guildId}/${poll.channelId}/${poll.messageId}`,
+		);
+	}
+	const entries =
+		voted.length + notVoted.length === 0
+			? ["There are no open anonymous polls."]
+			: [
+					"## Already voted",
+					...(voted.length ? voted : ["None."]),
+					"## Haven't voted yet",
+					...(notVoted.length ? notVoted : ["None."]),
+				];
+	const pages: string[] = [];
+	let page = "";
+	for (const entry of entries) {
+		if (page.length + entry.length + 2 > 2000) {
+			pages.push(page);
+			page = "";
+		}
+		page += `${page ? "\n\n" : ""}${entry}`;
+	}
+	if (page) pages.push(page);
+	return pages;
 }

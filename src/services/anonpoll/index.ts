@@ -44,6 +44,7 @@ import {
 	renderPublicClosedPoll,
 	renderPollMessage,
 	renderResults,
+	renderPollList,
 } from "./messages";
 import { AnonPollStore, type PollInfo } from "./store";
 import { PollCipher } from "./cipher";
@@ -68,7 +69,11 @@ export class AnonPollService extends Feature {
 	static #commandSpec = new SlashCommandBuilder()
 		.setName(CommandText.name)
 		.setDescription(CommandText.description)
-		.setContexts(InteractionContextType.Guild);
+		.setContexts(InteractionContextType.Guild)
+		.addSubcommand((subcommand) =>
+			subcommand.setName("create").setDescription(CommandText.create),
+		)
+		.addSubcommand((subcommand) => subcommand.setName("list").setDescription(CommandText.list));
 
 	#discord: DiscordService;
 	#store: AnonPollStore;
@@ -131,6 +136,36 @@ export class AnonPollService extends Feature {
 
 	@traced("event.handler")
 	async #handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+		switch (interaction.options.getSubcommand()) {
+			case "create":
+				return this.#handleCreate(interaction);
+			case "list":
+				return this.#handleList(interaction);
+			default:
+				throw new Error("Unrecognized anonymous poll subcommand");
+		}
+	}
+
+	async #handleList(interaction: ChatInputCommandInteraction): Promise<void> {
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		const polls = this.#store
+			.listOpenPolls(interaction.guildId!, this.#time.now())
+			.map((poll) => ({
+				...poll,
+				hasVoted: this.#store.hasVoted(poll.id, interaction.user.id),
+			}));
+		const pages = renderPollList(interaction.guildId!, polls);
+		await interaction.editReply({ content: pages[0]!, allowedMentions: { parse: [] } });
+		for (const content of pages.slice(1)) {
+			await interaction.followUp({
+				content,
+				flags: MessageFlags.Ephemeral,
+				allowedMentions: { parse: [] },
+			});
+		}
+	}
+
+	async #handleCreate(interaction: ChatInputCommandInteraction): Promise<void> {
 		await interaction.showModal(
 			new ModalBuilder()
 				.setCustomId(ComponentPrefix.Create)

@@ -8,6 +8,8 @@ import {
 	type ModalSubmitInteraction,
 	type InteractionReplyOptions,
 	type MessageFlagsResolvable,
+	type ChatInputCommandInteraction,
+	type SlashCommandBuilder,
 } from "discord.js";
 import { members } from "../../db/schema";
 import { CreateErrors, Replies } from "./messages";
@@ -53,8 +55,13 @@ async function setup() {
 	const send = mock(async (payload: { content: string }) => payload);
 	let submit!: (i: ModalSubmitInteraction) => Promise<void>;
 	let results!: (i: ButtonInteraction) => Promise<void>;
+	let command!: (i: ChatInputCommandInteraction) => Promise<void>;
+	let commandSpec!: SlashCommandBuilder;
 	const discord = {
-		registerSlashCommand() {},
+		registerSlashCommand(spec: SlashCommandBuilder, handler: typeof command) {
+			commandSpec = spec;
+			command = handler;
+		},
 		registerModalHandler(_prefix: string, handler: typeof submit) {
 			submit = handler;
 		},
@@ -139,10 +146,91 @@ async function setup() {
 		await flushInteractions();
 		return reply.mock.calls[0]![0];
 	};
-	return { store, time, send, edit, start, advanceTime, submitPoll, viewResults };
+	const listPolls = async () => {
+		const deferReply = mock(async () => {});
+		const editReply = mock(async () => {});
+		const followUp = mock(async () => {});
+		await command({
+			options: { getSubcommand: () => "list" },
+			guildId: "g",
+			user: { id: "voter" },
+			guild: {
+				members: { fetch: async () => ({ id: "voter" }) },
+				channels: { fetch: async () => ({ permissionsFor: () => ({ has: () => true }) }) },
+			},
+			deferReply,
+			editReply,
+			followUp,
+		} as unknown as ChatInputCommandInteraction);
+		return { deferReply, editReply, followUp };
+	};
+	return {
+		store,
+		time,
+		send,
+		edit,
+		start,
+		advanceTime,
+		submitPoll,
+		viewResults,
+		listPolls,
+		getCommandSpec: () => commandSpec.toJSON(),
+	};
 }
 
 type Fixture = Awaited<ReturnType<typeof setup>>;
+
+test("list registers a subcommand and privately groups open polls by voting status and end time", async () => {
+	const f = await setup();
+	for (const [id, closesAt, guild] of [
+		["later", 300_000, "g"],
+		["sooner", 200_000, "g"],
+		["voted", 250_000, "g"],
+		["expired", 90_000, "g"],
+		["other-server", 200_000, "other"],
+	] as const) {
+		f.store.createPoll({
+			id,
+			authorId: "author",
+			question: id,
+			choices: ["A", "B"],
+			closesAt: new Date(closesAt),
+		});
+		f.store.setMessage(id, {
+			message_id: id,
+			guild_id: guild,
+			channel_id: "c",
+			user_id: "bot",
+			timestamp: 1,
+			content: id,
+		});
+	}
+	f.store.castVote("voted", "voter", 0, f.time.now());
+	f.start();
+	expect(f.getCommandSpec().options?.map((option) => option.name)).toEqual(["create", "list"]);
+	const response = await f.listPolls();
+	expect(response.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+	const content = (response.editReply.mock.calls[0] as unknown as [{ content: string }])[0]
+		.content;
+	expect(content).toContain("**Already voted**\n\n• voted");
+	expect(content).toContain("**Haven't voted yet**\n\n• sooner");
+	expect(content.indexOf("• sooner")).toBeLessThan(content.indexOf("• later"));
+	expect(content).toContain("<@author>");
+	expect(content).toContain("<t:200:F>");
+	expect(content).toContain("https://discord.com/channels/g/c/sooner");
+	expect(content).not.toContain("expired");
+	expect(content).not.toContain("other-server");
+});
+
+test("list explains when there are no open polls", async () => {
+	const f = await setup();
+	f.start();
+	const response = await f.listPolls();
+	expect(response.editReply).toHaveBeenCalledWith({
+		content: "There are no open anonymous polls.",
+		allowedMentions: { parse: [] },
+	});
+});
 
 async function createPoll(values: Parameters<Fixture["submitPoll"]>[0] = {}) {
 	const f = await setup();
